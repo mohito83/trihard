@@ -1,4 +1,3 @@
-
 /*
  * name_to_id.c
  * Copyright (C) 2011 by USC/ISI
@@ -30,15 +29,14 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <netinet/in.h>
 #include "sha1.h"
 
-void
-die(char *s)
-{
+void die(char *s) {
 	fprintf(stderr, "%s\n", s);
 	exit(1);
-};
-
+}
+;
 
 /*
  * Each student needs to complete this function
@@ -47,25 +45,33 @@ die(char *s)
  * If you build this file
  *    gcc -o name_to_id_partial name_to_id.c sha1.c
  */
-unsigned int
-nonce_name_hash(int nonce, char *name)
-{
+unsigned int nonce_name_hash(int nonce, char *name) {
 	int name_length = strlen(name);
 	int buffer_length = sizeof(int) + name_length;
-	unsigned char *buffer = malloc(buffer_length);
+	unsigned char *buffer = malloc(buffer_length-1);
 
-	die("you need to fill in this part of the function to build\n the buffer as per the project specification.\n");
+	//die("you need to fill in this part of the function to build\n the buffer as per the project specification.\n");
+	/*sprintf((char*)buffer, "%u%s", htonl(nonce), name);
+	 printf("mohito:: buffer => %s\t length ==> %d\n",buffer, strlen((char*)buffer));*/
 
+	//unsigned char bytes[4];
+	unsigned int n = htonl(nonce);
+	buffer[3] = (n >> 24) & 0xFF;
+	buffer[2] = (n >> 16) & 0xFF;
+	buffer[1] = (n >> 8) & 0xFF;
+	buffer[0] = n & 0xFF;
+
+	int i = 4;
+	for (i = 4; i < buffer_length; i++) {
+		buffer[i] = (unsigned char)name[i-4];
+	}
 	unsigned int result = projb_hash(buffer, buffer_length);
 	free(buffer);
 
 	return result;
 }
 
-
-int
-main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
 	uint32_t hash;
 	int nonce;
 	char *name;
@@ -78,5 +84,5 @@ main(int argc, char **argv)
 	hash = nonce_name_hash(nonce, name);
 	printf("(%d, %s) => %x\n", nonce, name, hash);
 
-  return 0;
+	return 0;
 }

@@ -25,14 +25,21 @@ int readshm(char *segptr, char *s) {
 void get_triad_id(int nonce, char* client_name) {
 	int name_length = strlen(client_name);
 	int buffer_length = sizeof(int) + name_length;
-	char buffer[buffer_length];
-	memset(buffer, 0, sizeof(buffer));
-	unsigned int n = htonl(nonce);
-	sprintf(buffer, "%u%s", n, client_name);
+	unsigned char *buffer = malloc(buffer_length - 1);
 
-	/*unsigned char final_buff[strlen(buffer)];
-	memcpy(final_buff, buffer, strlen(buffer));*/
-	triad_id = projb_hash((unsigned char*)buffer, buffer_length);
+	unsigned int n = htonl(nonce);
+	buffer[3] = (n >> 24) & 0xFF;
+	buffer[2] = (n >> 16) & 0xFF;
+	buffer[1] = (n >> 8) & 0xFF;
+	buffer[0] = n & 0xFF;
+
+	int i = 4;
+	for (i = 4; i < buffer_length; i++) {
+		buffer[i] = (unsigned char) client_name[i - 4];
+	}
+	triad_id = projb_hash(buffer, buffer_length);
+	free(buffer);
+
 	printf("get_triad_id: the triad id for client: %s is= %x\n", client_name,
 			triad_id);
 }
@@ -100,8 +107,7 @@ void do_client() {
 			stage, nonce, client_name, port_no, second_name);
 
 	//caculate the triad id of this client
-//	get_triad_id(nonce, client_name);
-	get_triad_id(1234, "foo");
+	get_triad_id(nonce, client_name);
 
 	nonce += pid;
 	printf("do_client: computed nounce is: %ld\n", nonce);
