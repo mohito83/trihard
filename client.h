@@ -12,6 +12,7 @@
 #include "sock_op.h"
 #include <sys/shm.h>
 #include <sys/ipc.h>
+#include <string.h>
 
 #define SEGSIZE 10
 #define MAXSIZE 256

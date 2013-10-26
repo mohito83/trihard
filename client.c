@@ -6,6 +6,12 @@
  */
 
 #include "client.h"
+#include "sha1.h"
+
+char client_output_filename[100], client_name[80], port_no[6], second_name[80];
+int stage;
+long nonce;
+unsigned int triad_id;
 
 int readshm(char *segptr, char *s) {
 	memset(s, 0, SEGSIZE);
@@ -13,11 +19,31 @@ int readshm(char *segptr, char *s) {
 	return segptr == NULL;
 }
 
+/**
+ * This function calculates the triad identity for the client
+ */
+void get_triad_id(int nonce, char* client_name) {
+	int name_length = strlen(client_name);
+	int buffer_length = sizeof(int) + name_length;
+	char buffer[buffer_length];
+	memset(buffer, 0, sizeof(buffer));
+	unsigned int n = htonl(nonce);
+	sprintf(buffer, "%u%s", n, client_name);
+
+	/*unsigned char final_buff[strlen(buffer)];
+	memcpy(final_buff, buffer, strlen(buffer));*/
+	triad_id = projb_hash((unsigned char*)buffer, buffer_length);
+	printf("get_triad_id: the triad id for client: %s is= %x\n", client_name,
+			triad_id);
+}
+
+/**
+ * This function is the starting point of the client.
+ */
 void do_client() {
 
 	//printf("I am child process!!\n");
 	int shmid, server_port = 0;
-	long nounce = 0;
 	key_t key;
 	char *shm, s[SEGSIZE], buffer[MAXSIZE];
 	memset(buffer, 0, sizeof(buffer));
@@ -55,10 +81,9 @@ void do_client() {
 	//connect to the server
 	do {
 		readshm(shm, s);
-		printf(
-				"do_client(): server port number read from shared memory is: %s\n",
+		printf("do_client: server port number read from shared memory is: %s\n",
 				s);
-		printf("do_client(): trying to connect the server\n");
+		printf("do_client: trying to connect the server\n");
 		server_port = atoi(s);
 		populate_sockaddr_in(&tcp_server, "localhost", server_port);
 	} while (connect(tcp_client_sock_fd, (struct sockaddr *) &tcp_server,
@@ -68,14 +93,22 @@ void do_client() {
 		perror("Error in receiving data for server");
 	}
 
-	nounce = atol(buffer);
-	printf("do_client: data received from server: %ld\n", nounce);
-	nounce += pid;
-	printf("do_client: computed nounce is: %ld\n", nounce);
+	//tokenize the data received from the manager
+	sscanf(buffer, "%d\n%ld\n%s\n%s\n%s", &stage, &nonce, client_name, port_no,
+			second_name);
+	printf("do_client: data received from server: \n%d\n%ld\n%s\n%s\n%s\n",
+			stage, nonce, client_name, port_no, second_name);
+
+	//caculate the triad id of this client
+//	get_triad_id(nonce, client_name);
+	get_triad_id(1234, "foo");
+
+	nonce += pid;
+	printf("do_client: computed nounce is: %ld\n", nonce);
 
 	//send this information to the server
 	memset(buffer, 0, sizeof(buffer));
-	sprintf(buffer, "%ld %d\n", nounce, pid);
+	sprintf(buffer, "%ld %d\n", nonce, pid);
 	printf("do_client: data to send to manager: %s\n", buffer);
 	if (send(tcp_client_sock_fd, buffer, MAXSIZE - 1, 0) < 0) {
 		perror("Error sending data to server");
