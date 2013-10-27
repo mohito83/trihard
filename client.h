@@ -13,6 +13,7 @@
 #include <sys/shm.h>
 #include <sys/ipc.h>
 #include <sys/select.h>
+#include <netinet/in.h>
 #include <string.h>
 
 #define SEGSIZE 10

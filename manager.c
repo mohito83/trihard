@@ -20,6 +20,10 @@ long nonce = 0;
 int stage, status, client1_port_no = 0;
 const char* output_filename = "stage2.manager.out";
 char client1_name[80];
+//an array to hold the udp port numbers of all the clients
+//The array index will be used to identify the udp port of the clients
+int client_udp_ports[MAXSIZE];
+
 /*
  * For shared memory
  */
@@ -38,6 +42,7 @@ FILE* out_file_stream;
  * This function will initialize the connection and stuff
  */
 void init_process() {
+	memset(client_udp_ports, 0, sizeof(client_udp_ports));
 	//4. Create shared memory area with the child processes.
 	// REUSED CODE :- http://www.tldp.org/LDP/lpg/node81.html
 	//--START
@@ -111,7 +116,7 @@ int sum(char *str) {
  * @port_no: "0" or port number of the first client
  * @second_name: same as client_name for first client else first client's client_name for other nodes
  */
-void handle_client(int stage, long nonce, char* client_name, char* port_no,
+void handle_client(int i, int stage, long nonce, char* client_name, char* port_no,
 		char* second_name) {
 	char temp[MAXSIZE];
 	int client_sock_fd;
@@ -173,10 +178,12 @@ void handle_client(int stage, long nonce, char* client_name, char* port_no,
 	//parse the response
 	int pid;
 	sscanf(temp, "%ld %d\n%d", &mod_nonce, &pid, &client1_port_no);
-	printf("handle_client: client1_port_no received=%d\n",client1_port_no);
+	printf("handle_client: client1_port_no received=%d\n", client1_port_no);
+	client_udp_ports[i] = client1_port_no;
 
 	//client 1 says: 23504148 24713
-	fprintf(out_file_stream, "client %s says: %ld %d\n", client_name, mod_nonce, pid);
+	fprintf(out_file_stream, "client %s says: %ld %d\n", client_name, mod_nonce,
+			pid);
 	fflush(out_file_stream);
 	//close(client_sock_fd);
 	//TODO decide later when to close the client socket
@@ -187,7 +194,7 @@ void handle_client(int stage, long nonce, char* client_name, char* port_no,
  * instruction given on each line.
  */
 void read_input_file(char *filename) {
-	int child;
+	int child, i = 0;
 	char buff[256], first[15], second[80], port_no[6], second_name[80];
 	memset(buff, 0, sizeof(buff));
 	memset(first, 0, sizeof(first));
@@ -230,15 +237,16 @@ void read_input_file(char *filename) {
 			} else {
 				//non-blocking wait
 				waitpid(child, 0, WNOHANG);
-				if (client1_port_no == 0) {
+				if (i == 0) {
 					sprintf(port_no, "%d", 0);
 					memcpy(second_name, second, sizeof(second));
 					memcpy(client1_name, second, sizeof(second));
 				} else {
-					sprintf(port_no, "%d", client1_port_no);
-					memcpy (second_name,client1_name,sizeof(client1_name));
+					sprintf(port_no, "%d", client_udp_ports[0]);
+					memcpy(second_name, client1_name, sizeof(client1_name));
 				}
-				handle_client(stage, nonce, second, port_no, second_name);
+				handle_client(i, stage, nonce, second, port_no, second_name);
+				i++;
 			}
 			break;
 		case 557:
