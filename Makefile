@@ -17,5 +17,5 @@ sha1.o: sha1.c
 	 gcc -Wall -c sha1.c
 	
 clean:
-	rm *.o projb
+	rm *.o *.out projb
 

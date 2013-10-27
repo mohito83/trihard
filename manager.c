@@ -17,8 +17,9 @@
  */
 //long a[3] = { 0, 0, 0 };
 long nonce = 0;
-int stage;
+int stage, status, client1_port_no = 0;
 const char* output_filename = "stage2.manager.out";
+char client1_name[80];
 /*
  * For shared memory
  */
@@ -28,7 +29,7 @@ char *segptr;
 /**
  * For TCP socket prep
  */
-struct sockaddr_in tcp_server, tmp, tcp_client;
+struct sockaddr_in client_tcp_server, tmp, tcp_client;
 int tcp_serv_sock_fd;
 
 FILE* out_file_stream;
@@ -64,8 +65,8 @@ void init_process() {
 
 	//3. set up TCP server at manager
 	tcp_serv_sock_fd = create_tcp_socket();
-	populate_sockaddr_in(&tcp_server, "localhost", 0);
-	if (bind_address(tcp_serv_sock_fd, tcp_server) < 0) {
+	populate_sockaddr_in(&client_tcp_server, "localhost", 0);
+	if (bind_address(tcp_serv_sock_fd, client_tcp_server) < 0) {
 		perror("Error biding the address to socket. Exiting!!");
 		exit(0);
 	}
@@ -114,6 +115,7 @@ void handle_client(int stage, long nonce, char* client_name, char* port_no,
 		char* second_name) {
 	char temp[MAXSIZE];
 	int client_sock_fd;
+	long mod_nonce = 0;
 	socklen_t tcp_client_addr_len = sizeof(tcp_client);
 
 	printf("handle_client:: waiting for connection!!\n");
@@ -132,6 +134,11 @@ void handle_client(int stage, long nonce, char* client_name, char* port_no,
 	memset(tmp, 0, sizeof(tmp));
 	memset(temp, 0, sizeof(temp));
 
+	sprintf(tmp, "%d", status);
+	strcat(temp, tmp);
+	strcat(temp, "\n");
+
+	memset(tmp, 0, sizeof(tmp));
 	sprintf(tmp, "%d", stage);
 	strcat(temp, tmp);
 	strcat(temp, "\n");
@@ -157,15 +164,22 @@ void handle_client(int stage, long nonce, char* client_name, char* port_no,
 	printf("handle_client: payload for client is: %s\n", temp);
 
 	//wait to receive reply from the clients
+	memset(temp, 0, sizeof(temp));
 	if (recv(client_sock_fd, temp, sizeof(temp), 0) < 0)
 		perror("Error in receiving data from client");
 
 	printf("handle_client: data received at the server: %s\n", temp);
 
+	//parse the response
+	int pid;
+	sscanf(temp, "%ld %d\n%d", &mod_nonce, &pid, &client1_port_no);
+	printf("handle_client: client1_port_no received=%d\n",client1_port_no);
+
 	//client 1 says: 23504148 24713
-	fprintf(out_file_stream, "client %s says: %s", client_name, temp);
+	fprintf(out_file_stream, "client %s says: %ld %d\n", client_name, mod_nonce, pid);
 	fflush(out_file_stream);
-	close(client_sock_fd);
+	//close(client_sock_fd);
+	//TODO decide later when to close the client socket
 }
 
 /**
@@ -173,7 +187,7 @@ void handle_client(int stage, long nonce, char* client_name, char* port_no,
  * instruction given on each line.
  */
 void read_input_file(char *filename) {
-	int child, i = 0;
+	int child;
 	char buff[256], first[15], second[80], port_no[6], second_name[80];
 	memset(buff, 0, sizeof(buff));
 	memset(first, 0, sizeof(first));
@@ -201,7 +215,7 @@ void read_input_file(char *filename) {
 		 * if sum(first)== 557	=> store
 		 * if sum(first)== 630	=> search
 		 */
-		switch (sum(first)) {
+		switch (status = sum(first)) {
 		case 532:
 			stage = atoi(second);
 			break;
@@ -216,12 +230,15 @@ void read_input_file(char *filename) {
 			} else {
 				//non-blocking wait
 				waitpid(child, 0, WNOHANG);
-				if (i == 0) {
-					memcpy(port_no, "0", 2 * sizeof(char));
+				if (client1_port_no == 0) {
+					sprintf(port_no, "%d", 0);
 					memcpy(second_name, second, sizeof(second));
+					memcpy(client1_name, second, sizeof(second));
+				} else {
+					sprintf(port_no, "%d", client1_port_no);
+					memcpy (second_name,client1_name,sizeof(client1_name));
 				}
 				handle_client(stage, nonce, second, port_no, second_name);
-				i++;
 			}
 			break;
 		case 557:

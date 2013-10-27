@@ -27,4 +27,6 @@ void populate_sockaddr_in(struct sockaddr_in *sk_address,const char* address,int
 
 int bind_address(int tcp_sock_fd, struct sockaddr_in tcp_sender);
 
+int create_udp_socket();
+
 #endif /* SOCK_OP_H_ */

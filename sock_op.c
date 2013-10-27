@@ -55,3 +55,10 @@ int bind_address(int tcp_sock_fd, struct sockaddr_in tcp_sender) {
 }
 
 //USED CODE ENDS HERE--
+
+int create_udp_socket(){
+	int sockfd;
+		if ((sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
+			perror("Error while creating UDP socket.");
+		return sockfd;
+}
