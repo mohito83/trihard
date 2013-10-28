@@ -15,7 +15,7 @@ char *client_shm;
 int stage, status, client_shmid, tcp_client_sock_fd, udp_sock_fd;
 struct sockaddr_in client_tcp_server, udp_host_sock_addr;
 key_t client_key;
-long nonce;
+long nonce, new_nonce = 0;
 FILE *client_output_fd;
 //triad ids
 unsigned int self_triad_id, predecessor_triad_id = -1, successor_triad_id = -1;
@@ -81,7 +81,7 @@ int getMax(int a, int b) {
 /**
  * This function calculates the triad identity for the client
  */
-int get_triad_id(int nonce, char* client_name) {
+unsigned int get_triad_id(int nonce, char* client_name) {
 	int triad_id = -1;
 	int name_length = strlen(client_name);
 	int buffer_length = sizeof(int) + name_length;
@@ -104,12 +104,53 @@ int get_triad_id(int nonce, char* client_name) {
 }
 
 /**
+ * This function makes the decision regarding the next step for a node to take
+ * while booting the triad ring
+ *
+ * 100 => position found update the predecessor and successor in the ring.
+ * 101 => self_id is to be added at the beginning
+ * 102 => self_id is to be added at the end
+ * 103 => only one element in the ring
+ *
+ * @return decision
+ */
+int decision_matrix(int self_id, int client1_id, int successor_id) {
+	int decision = -1;
+	if (client1_id == successor_id) {
+		decision = 103;
+		return decision;
+	}
+	if (client1_id < self_id && self_id < successor_id) {
+		decision = 100;
+		return decision;
+	}
+	if (client1_id > successor_id && self_id < successor_id) {
+		decision = 101;
+		return decision;
+	}
+	if (client1_id > successor_id && self_id > successor_id
+			&& client1_id < self_id) {
+		decision = 102;
+		return decision;
+	}
+	printf("decision_matrix: the decision is= %d\n", decision);
+
+	return decision;
+}
+
+/**
  * This function the returns the triad if of the successor and logs the
  * transaction in the log file.
  * @triad_id: triad id of the target node
  * @port_no : UDP port number of the target node
  */
 void successor_q(int triad_id, int dest_port_no) {
+	//log the event in the log file
+	//successor-q sent (0xa9367d92)
+	fprintf(client_output_fd, "successor-q sent (0x%x)\n", triad_id);
+	fflush(client_output_fd);
+	printf("successor_q:: successor-q sent (0x%x)\n", triad_id);
+
 	int status = 1;
 	int size = sizeof(status) + sizeof(triad_id);
 	unsigned char mssg[size];
@@ -127,22 +168,207 @@ void successor_q(int triad_id, int dest_port_no) {
 	sendto(udp_sock_fd, mssg, size, 0, (struct sockaddr*) &dest_addrin,
 			sizeof(dest_addrin));
 
-	//log the event in the log file
-	//successor-q sent (0xa9367d92)
-	fprintf(client_output_fd, "successor-q sent (0x%x)\n", triad_id);
-	fflush(client_output_fd);
-	printf("successor_q:: successor-q sent (0x%x)\n", triad_id);
 }
 
 /**
  * This function replies back to the successor request
- * @sender_port_no: UDP port number of the sender
+ * @dest_addr: socket address information for the destination
+ * @self_triad_id: own triad id
+ * @successor_triad_id:successor's triad id
+ * @successor_udp_port: successor's udp port
  * @return successor's triad id
  */
-int successor_r(int sender_port_no) {
-	int successor_traid_id = -1;
+void successor_r(struct sockaddr dest_addr, int self_triad_id,
+		int successor_triad_id, int successor_udp_port) {
+	//log the event in the log file
+	fprintf(client_output_fd, "successor-r sent (0x%x 0x%x %d)\n",
+			self_triad_id, successor_triad_id, successor_udp_port);
+	fflush(client_output_fd);
+	printf("successor_r:: successor-r sent (0x%x 0x%x %d)\n", self_triad_id,
+			successor_triad_id, successor_udp_port);
 
-	return successor_traid_id;
+	int status = 2, pointer = 0;
+	unsigned char buff[MAXSIZE];
+	memset(buff, 0, MAXSIZE);
+
+	status = htonl(status);
+	self_triad_id = htonl(self_triad_id);
+	successor_triad_id = htonl(successor_triad_id);
+	successor_udp_port = htonl(successor_udp_port);
+
+	memcpy(buff + pointer, &status, sizeof(status));
+	pointer += sizeof(status);
+	memcpy(buff + pointer, &self_triad_id, sizeof(self_triad_id));
+	pointer += sizeof(self_triad_id);
+	memcpy(buff + pointer, &successor_triad_id, sizeof(successor_triad_id));
+	pointer += sizeof(successor_triad_id);
+	memcpy(buff + pointer, &successor_udp_port, sizeof(successor_udp_port));
+	pointer += sizeof(successor_udp_port);
+
+	sendto(udp_sock_fd, buff, pointer, 0, (struct sockaddr*) &dest_addr,
+			sizeof(dest_addr));
+
+}
+
+/**
+ * This function the returns the triad if of the predecessor and logs the
+ * transaction in the log file.
+ * @triad_id: triad id of the target node
+ * @port_no : UDP port number of the target node
+ */
+void predecessor_q(int triad_id, int dest_port_no) {
+	//log the event in the log file
+	//successor-q sent (0xa9367d92)
+	fprintf(client_output_fd, "predecessor-q sent (0x%x)\n", triad_id);
+	fflush(client_output_fd);
+	printf("predecessor_q:: predecessor-q sent (0x%x)\n", triad_id);
+
+	int status = 3;
+	int size = sizeof(status) + sizeof(triad_id);
+	unsigned char mssg[size];
+	struct sockaddr_in dest_addrin;
+
+	status = htonl(status);
+	triad_id = htonl(triad_id);
+
+	memset(mssg, 0, size);
+	memcpy(mssg, &status, sizeof(status));
+	memcpy(mssg + sizeof(status), &triad_id, sizeof(triad_id));
+
+	populate_sockaddr_in(&dest_addrin, "localhost", dest_port_no);
+
+	sendto(udp_sock_fd, mssg, size, 0, (struct sockaddr*) &dest_addrin,
+			sizeof(dest_addrin));
+
+}
+
+/**
+ * This function replies back to the successor request
+ * @dest_addr: socket address information for the destination
+ * @self_triad_id: own triad id
+ * @predecessor_triad_id:successor's triad id
+ * @predecessor_udp_port: successor's udp port
+ * @return successor's triad id
+ */
+void predecessor_r(struct sockaddr dest_addr, int self_triad_id,
+		int predecessor_triad_id, int predecessor_udp_port) {
+	//log the event in the log file
+	fprintf(client_output_fd, "predecessor-r sent (0x%x 0x%x %d)\n",
+			self_triad_id, predecessor_triad_id, predecessor_udp_port);
+	fflush(client_output_fd);
+	printf("predecessor_r:: predecessor-r sent (0x%x 0x%x %d)\n", self_triad_id,
+			predecessor_triad_id, predecessor_udp_port);
+
+	int status = 4, pointer = 0;
+	unsigned char buff[MAXSIZE];
+	memset(buff, 0, MAXSIZE);
+
+	status = htonl(status);
+	self_triad_id = htonl(self_triad_id);
+	predecessor_triad_id = htonl(predecessor_triad_id);
+	predecessor_udp_port = htonl(predecessor_udp_port);
+
+	memcpy(buff + pointer, &status, sizeof(status));
+	pointer += sizeof(status);
+	memcpy(buff + pointer, &self_triad_id, sizeof(self_triad_id));
+	pointer += sizeof(self_triad_id);
+	memcpy(buff + pointer, &predecessor_triad_id, sizeof(predecessor_triad_id));
+	pointer += sizeof(predecessor_triad_id);
+	memcpy(buff + pointer, &predecessor_udp_port, sizeof(predecessor_udp_port));
+	pointer += sizeof(predecessor_udp_port);
+
+	sendto(udp_sock_fd, buff, pointer, 0, (struct sockaddr*) &dest_addr,
+			sizeof(dest_addr));
+
+}
+
+/**
+ * This function updates the finger table or the predecessor/successor entries
+ * of the node identified by the dest_port_no
+ * @dest_port_no
+ * @triad_id of the target node
+ * @new_triad_id new successor or predecessor triad id
+ * @new_port new successor or predecessor port number
+ * @flag to decide to affect successor or predecessor fields of the target nodes.
+ * 		'0' for predecessor & '1' for successor
+ */
+void update_q(int dest_port_no, int triad_id, int new_triad_id, int new_port,
+		int flag) {
+	//log the event in the log file
+	fprintf(client_output_fd, "update-q sent (0x%x 0x%x %d %d)\n", triad_id,
+			new_triad_id, new_port, flag);
+	fflush(client_output_fd);
+	printf("update-q:: update-q sent (0x%x 0x%x %d %d)\n", triad_id,
+			new_triad_id, new_port, flag);
+
+	int status = 7, pointer = 0;
+	unsigned char buff[MAXSIZE];
+	memset(buff, 0, MAXSIZE);
+
+	status = htonl(status);
+	triad_id = htonl(triad_id);
+	new_triad_id = htonl(new_triad_id);
+	new_port = htonl(new_port);
+	flag = htonl(flag);
+
+	memcpy(buff + pointer, &status, sizeof(status));
+	pointer += sizeof(status);
+	memcpy(buff + pointer, &triad_id, sizeof(triad_id));
+	pointer += sizeof(triad_id);
+	memcpy(buff + pointer, &new_triad_id, sizeof(new_triad_id));
+	pointer += sizeof(new_triad_id);
+	memcpy(buff + pointer, &new_port, sizeof(new_port));
+	pointer += sizeof(new_port);
+	memcpy(buff + pointer, &flag, sizeof(flag));
+	pointer += sizeof(flag);
+
+	struct sockaddr_in dest_addrin;
+
+	populate_sockaddr_in(&dest_addrin, "localhost", dest_port_no);
+
+	sendto(udp_sock_fd, buff, pointer, 0, (struct sockaddr*) &dest_addrin,
+			sizeof(dest_addrin));
+}
+
+/**
+ * Sends back the update response
+ */
+void update_r(struct sockaddr dest_addr, int result, int self_triad_id,
+		int successor_triad_id, int successor_udp_port, int flag) {
+	//log the event in the log file
+	fprintf(client_output_fd, "update-r sent (0x%x %d 0x%x %d %d)\n",
+			self_triad_id, result, successor_triad_id, successor_udp_port,
+			flag);
+	fflush(client_output_fd);
+	printf("update-r:: update-r sent (0x%x %d 0x%x %d %d)\n", self_triad_id,
+			result, successor_triad_id, successor_udp_port, flag);
+
+	int status = 8, pointer = 0;
+	unsigned char buff[MAXSIZE];
+	memset(buff, 0, MAXSIZE);
+
+	status = htonl(status);
+	self_triad_id = htonl(self_triad_id);
+	result = htonl(result);
+	successor_triad_id = htonl(successor_triad_id);
+	successor_udp_port = htonl(successor_udp_port);
+	flag = htonl(flag);
+
+	memcpy(buff + pointer, &status, sizeof(status));
+	pointer += sizeof(status);
+	memcpy(buff + pointer, &self_triad_id, sizeof(self_triad_id));
+	pointer += sizeof(self_triad_id);
+	memcpy(buff + pointer, &result, sizeof(result));
+	pointer += sizeof(result);
+	memcpy(buff + pointer, &successor_triad_id, sizeof(successor_triad_id));
+	pointer += sizeof(successor_triad_id);
+	memcpy(buff + pointer, &successor_udp_port, sizeof(successor_udp_port));
+	pointer += sizeof(successor_udp_port);
+	memcpy(buff + pointer, &flag, sizeof(flag));
+	pointer += sizeof(flag);
+
+	sendto(udp_sock_fd, buff, pointer, 0, (struct sockaddr*) &dest_addr,
+			sizeof(dest_addr));
 }
 
 /**
@@ -188,6 +414,10 @@ void handle_tcp_receives() {
 		if (client_1_udp_port_no == 0) {
 			predecessor_triad_id = self_triad_id;
 			successor_triad_id = self_triad_id;
+			//after joining the triad ring log to output file
+			fprintf(client_output_fd, "client %s created with hash 0x%x\n",
+					client_name, self_triad_id);
+			fflush(client_output_fd);
 		} else {
 			add_to_ring(second_name, client_1_udp_port_no);
 		}
@@ -195,26 +425,27 @@ void handle_tcp_receives() {
 				"do_client: predecessor_triad_id=0x%x\tsuccessor_triad_id0x=%x\n",
 				predecessor_triad_id, successor_triad_id);
 
-		//after joining the triad ring log to output file
-		fprintf(client_output_fd, "client %s created with hash 0x%x",
-				client_name, self_triad_id);
-		fflush(client_output_fd);
-
 		// fetch the local port number and send back to the manager
 		socklen_t addrlen = sizeof(udp_host_sock_addr);
-		int local_port = 0;
 		if (getsockname(udp_sock_fd, (struct sockaddr *) &udp_host_sock_addr,
 				&addrlen) == 0) {
-			local_port = ntohs(udp_host_sock_addr.sin_port);
+			local_udp_port = ntohs(udp_host_sock_addr.sin_port);
+		}
+
+		if (client_1_udp_port_no == 0) { // only in the case of first client
+			predecessor_udp_port = local_udp_port;
+			successor_udp_port = local_udp_port;
 		}
 
 		//calculate the new nonce
-		nonce += pid;
-		printf("do_client: computed nounce is: %ld\n", nonce);
+		new_nonce = nonce + pid;
+		printf("do_client: computed nounce is: %ld\n", new_nonce);
 
+		//TODO to be sent when the client is completely setup.. for the time
+		//being let the code be there
 		memset(buffer, 0, sizeof(buffer));
-		sprintf(buffer, "%ld %d\n%d\n", nonce, pid, local_port);
-		printf("do_client: local udp port number = %d\n", local_port);
+		sprintf(buffer, "%ld %d\n%d\n", new_nonce, pid, local_udp_port);
+		printf("do_client: local udp port number = %d\n", local_udp_port);
 		if (send(tcp_client_sock_fd, buffer, MAXSIZE - 1, 0) < 0) {
 			perror("Error sending data to server");
 		}
@@ -234,8 +465,9 @@ void handle_tcp_receives() {
  * This function handles the data received at the UDP socket
  */
 void handle_udp_receives() {
-	int status = 0, data;
-	unsigned char buff[2 * sizeof(int)];
+	int status = 0, data, pointer = 0, self_id, successor_id, successor_port,
+			flag, result;
+	unsigned char buff[MAXSIZE];
 	struct sockaddr dest_addr;
 	socklen_t dest_addr_len = sizeof(struct sockaddr);
 	if (recvfrom(udp_sock_fd, buff, sizeof(buff), 0,
@@ -244,20 +476,145 @@ void handle_udp_receives() {
 	}
 
 	memcpy(&status, buff, sizeof(status));
-	memcpy(&data, buff + sizeof(status), sizeof(data));
 	status = ntohl(status);
-	data = ntohl(data);
-	printf("handle_udp_receives: status= %x\tdata=%x\n",status,data);
+	pointer += sizeof(status);
 
 	switch (status) {
 	case 1:
+		data = 0;
+		memcpy(&data, buff + pointer, sizeof(data));
+		data = ntohl(data);
 		//log the transaction in the log file
 		fprintf(client_output_fd, "successor-q received (0x%x)\n", data);
 		fflush(client_output_fd);
+
+		//reply with successor-r message
+		successor_r(dest_addr, self_triad_id, successor_triad_id,
+				successor_udp_port);
+
 		printf("handle_udp_receives: successor-q received (0x%x)\n", data);
 		break;
-	case 3:
 
+	case 2:
+		memcpy(&self_id, buff + pointer, sizeof(self_id));
+		pointer += sizeof(self_id);
+		memcpy(&successor_id, buff + pointer, sizeof(successor_id));
+		pointer += sizeof(successor_id);
+		memcpy(&successor_port, buff + pointer, sizeof(successor_port));
+
+		self_id = ntohl(self_id);
+		successor_id = ntohl(successor_id);
+		successor_port = ntohl(successor_port);
+
+		//log the transaction in the log file
+		fprintf(client_output_fd, "successor-r received (0x%x 0x%x %d)\n",
+				self_id, successor_id, successor_port);
+		fflush(client_output_fd);
+		printf("handle_udp_receives: successor-r received (0x%x 0x%x %d)\n",
+				self_id, successor_id, successor_port);
+
+		//make a decision about location of this node in the triad ring
+		result = decision_matrix(self_triad_id,
+				get_triad_id(nonce, second_name), successor_id);
+		//result =103;
+
+		/* 100 => position found update the predecessor and successor in the ring.
+		 * 101 => self_id is to be added at the beginning
+		 * 102 => self_id is to be added at the end
+		 * 103 => only one element in the ring
+		 */
+
+		switch (result) {
+		case 100:
+
+			break;
+		case 101:
+
+			break;
+		case 102:
+
+			break;
+		case 103:
+			//send to update messages to the first node. First message to update
+			//its predecessor entries and second message for its successor entries
+			update_q(client_1_udp_port_no, get_triad_id(nonce, second_name),
+					self_triad_id, local_udp_port, 0);
+			update_q(client_1_udp_port_no, get_triad_id(nonce, second_name),
+					self_triad_id, local_udp_port, 1);
+			break;
+		}
+
+		break;
+
+	case 7:
+		memcpy(&self_id, buff + pointer, sizeof(self_id));
+		pointer += sizeof(self_id);
+		memcpy(&successor_id, buff + pointer, sizeof(successor_id));
+		pointer += sizeof(successor_id);
+		memcpy(&successor_port, buff + pointer, sizeof(successor_port));
+		pointer += sizeof(successor_port);
+		memcpy(&flag, buff + pointer, sizeof(flag));
+
+		self_id = ntohl(self_id);
+		successor_id = ntohl(successor_id);
+		successor_port = ntohl(successor_port);
+		flag = ntohl(flag);
+
+		//log the transaction in the log file
+		fprintf(client_output_fd, "update-q received (0x%x 0x%x %d %d)\n",
+				self_id, successor_id, successor_port, flag);
+		fflush(client_output_fd);
+		printf("handle_udp_receives: update-q received (0x%x 0x%x %d %d)\n",
+				self_id, successor_id, successor_port, flag);
+
+		//reply back to the sender
+		result = 1;
+		update_r(dest_addr, result, self_triad_id, successor_triad_id,
+				successor_port, flag);
+
+		//update the node properties
+		if (flag) {
+			successor_udp_port = successor_port;
+			successor_triad_id = successor_id;
+		} else {
+			predecessor_udp_port = successor_port;
+			predecessor_triad_id = successor_id;
+		}
+
+		break;
+
+	case 8:
+		memcpy(&self_id, buff + pointer, sizeof(self_id));
+		pointer += sizeof(self_id);
+		memcpy(&result, buff + pointer, sizeof(result));
+		pointer += sizeof(result);
+		memcpy(&successor_id, buff + pointer, sizeof(successor_id));
+		pointer += sizeof(successor_id);
+		memcpy(&successor_port, buff + pointer, sizeof(successor_port));
+		pointer += sizeof(successor_id);
+		memcpy(&flag, buff + pointer, sizeof(flag));
+
+		self_id = ntohl(self_id);
+		result = ntohl(result);
+		successor_id = ntohl(successor_id);
+		successor_port = ntohl(successor_port);
+		flag = ntohl(flag);
+
+		//log the transaction in the log file
+		fprintf(client_output_fd, "update-r received (0x%x %d 0x%x %d %d)\n",
+				self_id, result, successor_id, successor_port, flag);
+		fflush(client_output_fd);
+		printf("handle_udp_receives: update-r received (0x%x %d 0x%x %d %d)\n",
+				self_id, result, successor_id, successor_port, flag);
+		if (result) {
+			if (flag) {
+				successor_udp_port = successor_port;
+				successor_triad_id = successor_id;
+			} else {
+				predecessor_udp_port = successor_port;
+				predecessor_triad_id = successor_id;
+			}
+		}
 		break;
 	}
 }
@@ -339,4 +696,3 @@ void do_client() {
 	destroy_client(readfds);
 
 }
-

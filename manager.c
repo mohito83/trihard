@@ -116,8 +116,8 @@ int sum(char *str) {
  * @port_no: "0" or port number of the first client
  * @second_name: same as client_name for first client else first client's client_name for other nodes
  */
-void handle_client(int i, int stage, long nonce, char* client_name, char* port_no,
-		char* second_name) {
+void handle_client(int i, int stage, long nonce, char* client_name,
+		char* port_no, char* second_name) {
 	char temp[MAXSIZE];
 	int client_sock_fd;
 	long mod_nonce = 0;
@@ -178,7 +178,8 @@ void handle_client(int i, int stage, long nonce, char* client_name, char* port_n
 	//parse the response
 	int pid;
 	sscanf(temp, "%ld %d\n%d", &mod_nonce, &pid, &client1_port_no);
-	printf("handle_client: client1_port_no received=%d\n", client1_port_no);
+	printf("handle_client: client1_port_no[%d] received=%d\n", i,
+			client1_port_no);
 	client_udp_ports[i] = client1_port_no;
 
 	//client 1 says: 23504148 24713
