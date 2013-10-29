@@ -22,7 +22,7 @@ const char* output_filename = "stage2.manager.out";
 char client1_name[80];
 //an array to hold the udp port numbers of all the clients
 //The array index will be used to identify the udp port of the clients
-int client_udp_ports[MAXSIZE];
+int client_udp_ports[MAXSIZE], client1_tcp_sock_fd;
 
 /*
  * For shared memory
@@ -116,7 +116,7 @@ int sum(char *str) {
  * @port_no: "0" or port number of the first client
  * @second_name: same as client_name for first client else first client's client_name for other nodes
  */
-void handle_client(int i, int stage, long nonce, char* client_name,
+int handle_client(int i, int stage, long nonce, char* client_name,
 		char* port_no, char* second_name) {
 	char temp[MAXSIZE];
 	int client_sock_fd;
@@ -188,6 +188,20 @@ void handle_client(int i, int stage, long nonce, char* client_name,
 	fflush(out_file_stream);
 	//close(client_sock_fd);
 	//TODO decide later when to close the client socket
+	return client_sock_fd;
+}
+
+/**
+ * This function send commands to the client 1
+ */
+void send_command_to_client(int command, char* data) {
+	//create message"
+	char buff[MAXSIZE];
+	memset(buff, 0, sizeof(buff));
+	sprintf(buff, "%d\n%s", command, data);
+	send(client1_tcp_sock_fd, buff, strlen(buff), 0);
+	if (recv(client1_tcp_sock_fd, buff, sizeof(buff), 0) < 0)
+		perror("Error in receiving data from client");
 }
 
 /**
@@ -196,7 +210,7 @@ void handle_client(int i, int stage, long nonce, char* client_name,
  */
 void read_input_file(char *filename) {
 	int child, i = 0;
-	char buff[256], first[15], second[80], port_no[6], second_name[80];
+	char buff[MAXSIZE], first[15], second[80], port_no[6], second_name[80];
 	memset(buff, 0, sizeof(buff));
 	memset(first, 0, sizeof(first));
 	memset(second, 0, sizeof(second));
@@ -246,15 +260,20 @@ void read_input_file(char *filename) {
 					sprintf(port_no, "%d", client_udp_ports[0]);
 					memcpy(second_name, client1_name, sizeof(client1_name));
 				}
-				handle_client(i, stage, nonce, second, port_no, second_name);
+				int sock_fd = handle_client(i, stage, nonce, second, port_no,
+						second_name);
+				if (i == 0) {
+					client1_tcp_sock_fd = sock_fd;
+				}
 				i++;
 			}
 			break;
 		case 557:
-			printf("read_input_file: sum=%d\tstore %s\n", sum(first), second);
+			printf("read_input_file: store %s\n", second);
+			send_command_to_client(557, second);
 			break;
 		case 630:
-			printf("read_input_file: sum=%d\tsearch %s\n", sum(first), second);
+			printf("read_input_file: search %s\n", second);
 			break;
 		}
 

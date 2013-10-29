@@ -33,6 +33,7 @@ typedef struct client {
 	char client_1_name[80];
 	unsigned int client_1_port;
 	unsigned int nonce;
+	unsigned int data_hash;	// hash key for the data
 
 	unsigned int client_1_triad_id;
 

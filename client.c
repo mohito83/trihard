@@ -132,7 +132,8 @@ int decision_matrix(unsigned int self_id, unsigned int client1_id,
 		 decision = 102;*/
 
 		//this is the boundary condition and the list rollovers
-	} else if (predecessor_id > successor_id && (successor_id > self_id || predecessor_id<self_id)) {
+	} else if (predecessor_id > successor_id
+			&& (successor_id > self_id || predecessor_id < self_id)) {
 		decision = 102;
 	} else {
 		decision = 104;
@@ -392,6 +393,75 @@ void update_r(struct sockaddr_in dest_addr, triad_client *client, int result,
 }
 
 /**
+ * This function sends stores-q request messages to other nodes to find the
+ * closest possible match, to store the data.
+ */
+void stores_q(triad_client *client, unsigned int sucessor_id,
+		unsigned int dest_port_no, char *str) {
+	int status = 5, pointer = 0;
+	unsigned int data_hash = get_triad_id(client->nonce, str);
+
+	//log the event
+	fprintf(client_output_fd, "stores-q sent (0x%x 0x%x)\n", sucessor_id,
+			data_hash);
+	fflush(client_output_fd);
+	printf("stores-q:: client=%s\tstores-q sent (0x%x 0x%x)\n", client->name,
+			sucessor_id, data_hash);
+
+	char buff[MAXSIZE];
+	memset(buff, 0, sizeof(buff));
+	memcpy(buff + pointer, &status, sizeof(status));
+	pointer += sizeof(status);
+	memcpy(buff + pointer, &sucessor_id, sizeof(sucessor_id));
+	pointer += sizeof(sucessor_id);
+	memcpy(buff + pointer, &data_hash, sizeof(data_hash));
+	pointer += sizeof(data_hash);
+
+	struct sockaddr_in dest_addrin;
+
+	populate_sockaddr_in(&dest_addrin, "localhost", dest_port_no);
+
+	sendto(udp_sock_fd, buff, pointer, 0, (struct sockaddr*) &dest_addrin,
+			sizeof(dest_addrin));
+}
+
+/**
+ * Tjhis function replies back the stores-r message
+ */
+void stores_r(struct sockaddr_in dest_addr, triad_client *client, unsigned int self_id,
+		unsigned int data_hash, unsigned int successor_id,
+		unsigned int successor_port, int flag) {
+	int status = 6, pointer = 0;
+	char buff[MAXSIZE];
+	memset(buff, 0, sizeof(buff));
+
+	memset(buff, 0, sizeof(buff));
+	memcpy(buff + pointer, &status, sizeof(status));
+	pointer += sizeof(status);
+	memcpy(buff + pointer, &self_id, sizeof(self_id));
+	pointer += sizeof(self_id);
+	memcpy(buff + pointer, &data_hash, sizeof(data_hash));
+	pointer += sizeof(data_hash);
+	memcpy(buff + pointer, &successor_id, sizeof(successor_id));
+	pointer += sizeof(successor_id);
+	memcpy(buff + pointer, &successor_port, sizeof(successor_port));
+	pointer += sizeof(successor_port);
+	memcpy(buff + pointer, &flag, sizeof(flag));
+	pointer += sizeof(flag);
+
+	sendto(udp_sock_fd, buff, pointer, 0, (struct sockaddr*) &dest_addr,
+			sizeof(dest_addr));
+
+	//log the event in the log file
+	fprintf(client_output_fd, "stores-r sent (0x%x 0x%x 0x%x %d %d)\n", self_id,
+			data_hash, successor_id, successor_port, flag);
+	fflush(client_output_fd);
+	printf("stores-r:: client=%s\tstores-r sent (0x%x 0x%x 0x%x %d %d)\n",
+			client->name, self_id, data_hash, successor_id, successor_port,
+			flag);
+}
+
+/**
  * This function adds the node to the triad ring
  */
 void add_to_ring(triad_client *client) {
@@ -423,7 +493,7 @@ void reply_to_manager(triad_client *client) {
  */
 void handle_tcp_receives(triad_client *client) {
 	int stage;
-	char buffer[MAXSIZE];
+	char buffer[MAXSIZE], str[80];
 	memset(buffer, 0, sizeof(buffer));
 
 	if (recv(tcp_client_sock_fd, buffer, MAXSIZE - 1, 0) < 0) {
@@ -484,7 +554,11 @@ void handle_tcp_receives(triad_client *client) {
 
 		break;
 	case 557:
-		printf("handle_tcp_receives: store \n");
+		memset(str, 0, sizeof(str));
+		sscanf(buffer, "%d\n%s", &status, str);
+		printf("handle_tcp_receives: client=%s\tstore %s\n", client->name, str);
+		stores_q(client, client->successor_triad_id, client->successor_udp_port,
+				str);
 		break;
 	case 630:
 		printf("handle_tcp_receives: search \n");
@@ -565,29 +639,8 @@ void handle_udp_receives(triad_client *client) {
 
 		switch (result) {
 		case 100:
-			//to successor
-			update_q(client, client->temp.tmp_successor_udp_port,
-					client->temp.tmp_successor_triad_id, client->self_triad_id,
-					client->local_udp_port, 0);
-			//to predecessor
-			update_q(client, client->temp.tmp_predecessor_udp_port,
-					client->temp.tmp_predecessor_triad_id,
-					client->self_triad_id, client->local_udp_port, 1);
-			break;
 		case 101:
-			printf(
-					"handle_udp_receives: 101 => self_id is to be added at the beginning\n");
-			break;
 		case 102:
-			//to successor
-			update_q(client, client->temp.tmp_successor_udp_port,
-					client->temp.tmp_successor_triad_id, client->self_triad_id,
-					client->local_udp_port, 0);
-			//to predecessor
-			update_q(client, client->temp.tmp_predecessor_udp_port,
-					client->temp.tmp_predecessor_triad_id,
-					client->self_triad_id, client->local_udp_port, 1);
-			break;
 		case 103:
 			update_q(client, client->temp.tmp_successor_udp_port,
 					client->temp.tmp_successor_triad_id, client->self_triad_id,
@@ -601,6 +654,63 @@ void handle_udp_receives(triad_client *client) {
 			successor_q(client, successor_id, successor_port);
 			break;
 		}
+
+		break;
+
+	case 5:
+		memcpy(&self_id, buff + pointer, sizeof(self_id));
+		pointer += sizeof(self_id);
+		memcpy(&result, buff + pointer, sizeof(result));
+		pointer += sizeof(result); //result is reused to hold the data_hash value for this case
+
+		self_id = ntohl(self_id);
+		result = ntohl(result);
+
+		//log the event
+		fprintf(client_output_fd, "stores-q received (0x%x 0x%x)\n", self_id,
+				result);
+		fflush(client_output_fd);
+		printf(
+				"handle_udp_receives: client=%s\tstores-q received (0x%x 0x%x)\n",
+				client->name, self_id, result);
+
+		/*stores-r (ni; di; ri; rp; has) reply stating that ni's best estimate of the node that stores
+		 di has id ri at port rp.*/
+		if (result > client->predecessor_triad_id
+				&& result <= client->self_triad_id) {
+			flag = result == client->self_triad_id
+					&& client->data_hash == result;
+			successor_id = client->self_triad_id;
+			successor_port = client->local_udp_port;
+		} else {
+			flag = 0;
+			successor_id = client->successor_triad_id;
+			successor_port = client->successor_udp_port;
+		}
+
+		stores_r(dest_addr, client, self_id, result, successor_id, successor_port,
+				flag);
+		break;
+
+	case 6:
+		memcpy(&self_id, buff + pointer, sizeof(self_id));
+		pointer += sizeof(self_id);
+		memcpy(&result, buff + pointer, sizeof(result));
+		pointer += sizeof(result);
+		memcpy(&successor_id, buff + pointer, sizeof(successor_id));
+		pointer += sizeof(successor_id);
+		memcpy(&successor_port, buff + pointer, sizeof(successor_port));
+		pointer += sizeof(successor_port);
+		memcpy(&flag, buff + pointer, sizeof(flag));
+
+		//log the event
+		fprintf(client_output_fd, "stores-r received (0x%x 0x%x 0x%x %d %d)\n",
+				self_id, result, successor_id, successor_port, flag);
+		fflush(client_output_fd);
+		printf(
+				"handle_udp_receives: client=%s\tstores-r received (0x%x 0x%x 0x%x %d %d)\n",
+				client->name, self_id, result, successor_id, successor_port,
+				flag);
 
 		break;
 
