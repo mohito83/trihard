@@ -114,24 +114,28 @@ unsigned int get_triad_id(int nonce, char* client_name) {
  * 101 => self_id is to be added at the beginning
  * 102 => self_id is to be added at the end
  * 103 => only one element in the ring
+ * 104 => keep searching for right neighborhood to fit in
  *
  * @return decision
  */
 int decision_matrix(unsigned int self_id, unsigned int client1_id,
-		unsigned int successor_id) {
+		unsigned int successor_id, unsigned int predecessor_id) {
 	int decision = -1;
-	if (client1_id == successor_id) {
+	if (predecessor_id == successor_id) {
 		decision = 103;
-	}
-	if (client1_id < self_id && self_id < successor_id) {
+	} else if (predecessor_id < self_id && self_id < successor_id) {
 		decision = 100;
-	}
-	if (client1_id > successor_id && self_id < successor_id) {
-		decision = 101;
-	}
-	if (client1_id > successor_id && self_id > successor_id
-			&& client1_id < self_id) {
+		/*} else if (client1_id > successor_id && self_id < successor_id) {
+		 decision = 101;
+		 } else if (client1_id > successor_id && self_id > successor_id
+		 && client1_id < self_id) {
+		 decision = 102;*/
+
+		//this is the boundary condition and the list rollovers
+	} else if (predecessor_id > successor_id && (successor_id > self_id || predecessor_id<self_id)) {
 		decision = 102;
+	} else {
+		decision = 104;
 	}
 	printf("decision_matrix: the decision is= %d\n", decision);
 
@@ -181,7 +185,7 @@ void successor_q(triad_client *client, unsigned int triad_id,
  * @successor_udp_port: successor's udp port
  * @return successor's triad id
  */
-void successor_r(struct sockaddr dest_addr, triad_client *client,
+void successor_r(struct sockaddr_in dest_addr, triad_client *client,
 		unsigned int self_triad_id, unsigned int successor_triad_id,
 		unsigned int successor_udp_port) {
 	//log the event in the log file
@@ -345,7 +349,7 @@ void update_q(triad_client *client, int dest_port_no, int triad_id,
 /**
  * Sends back the update response
  */
-void update_r(struct sockaddr dest_addr, triad_client *client, int result,
+void update_r(struct sockaddr_in dest_addr, triad_client *client, int result,
 		int self_triad_id, int successor_triad_id, int successor_udp_port,
 		int flag) {
 	//log the event in the log file
@@ -496,7 +500,7 @@ void handle_udp_receives(triad_client *client) {
 	unsigned int status = 0, data, pointer = 0, self_id = 0, successor_id = 0,
 			successor_port = 0, result, flag;
 	unsigned char buff[MAXSIZE];
-	struct sockaddr dest_addr;
+	struct sockaddr_in dest_addr;
 	socklen_t dest_addr_len = sizeof(struct sockaddr);
 	if (recvfrom(udp_sock_fd, buff, sizeof(buff), 0,
 			(struct sockaddr*) &dest_addr, &dest_addr_len) < 0) {
@@ -545,8 +549,8 @@ void handle_udp_receives(triad_client *client) {
 				client->name, self_id, successor_id, successor_port);
 
 		//make a decision about location of this node in the triad ring
-		result = decision_matrix(client->self_triad_id, client->client_1_triad_id,
-				successor_id);
+		result = decision_matrix(client->self_triad_id,
+				client->client_1_triad_id, successor_id, self_id);
 
 		/* 100 => position found update the predecessor and successor in the ring.
 		 * 101 => self_id is to be added at the beginning
@@ -554,38 +558,47 @@ void handle_udp_receives(triad_client *client) {
 		 * 103 => only one element in the ring
 		 */
 
+		client->temp.tmp_successor_triad_id = successor_id;
+		client->temp.tmp_successor_udp_port = successor_port;
+		client->temp.tmp_predecessor_triad_id = self_id;
+		client->temp.tmp_predecessor_udp_port = ntohs(dest_addr.sin_port);
+
 		switch (result) {
 		case 100:
 			//to successor
-			client->temp.tmp_successor_triad_id = successor_id;
-			client->temp.tmp_successor_udp_port = successor_port;
-			update_q(client, successor_port, successor_id,
-					client->self_triad_id, client->local_udp_port, 0);
+			update_q(client, client->temp.tmp_successor_udp_port,
+					client->temp.tmp_successor_triad_id, client->self_triad_id,
+					client->local_udp_port, 0);
 			//to predecessor
-			client->temp.tmp_predecessor_triad_id = client->client_1_triad_id;
-			client->temp.tmp_predecessor_udp_port = client->client_1_port;
-			update_q(client, client->client_1_port, client->client_1_triad_id,
+			update_q(client, client->temp.tmp_predecessor_udp_port,
+					client->temp.tmp_predecessor_triad_id,
 					client->self_triad_id, client->local_udp_port, 1);
 			break;
 		case 101:
-
+			printf(
+					"handle_udp_receives: 101 => self_id is to be added at the beginning\n");
 			break;
 		case 102:
-
+			//to successor
+			update_q(client, client->temp.tmp_successor_udp_port,
+					client->temp.tmp_successor_triad_id, client->self_triad_id,
+					client->local_udp_port, 0);
+			//to predecessor
+			update_q(client, client->temp.tmp_predecessor_udp_port,
+					client->temp.tmp_predecessor_triad_id,
+					client->self_triad_id, client->local_udp_port, 1);
 			break;
 		case 103:
-			//send to update messages to the first node. First message to update
-			//its predecessor entries and second message for its successor entries
-			//to successor
-			client->temp.tmp_successor_triad_id = client->client_1_triad_id;
-			client->temp.tmp_successor_udp_port = client->client_1_port;
-			update_q(client, client->client_1_port, client->client_1_triad_id,
-					client->self_triad_id, client->local_udp_port, 0);
-			//to predecessor
-			client->temp.tmp_predecessor_triad_id = client->client_1_triad_id;
-			client->temp.tmp_predecessor_udp_port = client->client_1_port;
-			update_q(client, client->client_1_port, client->client_1_triad_id,
+			update_q(client, client->temp.tmp_successor_udp_port,
+					client->temp.tmp_successor_triad_id, client->self_triad_id,
+					client->local_udp_port, 0);
+			update_q(client, client->temp.tmp_predecessor_udp_port,
+					client->temp.tmp_predecessor_triad_id,
 					client->self_triad_id, client->local_udp_port, 1);
+			break;
+
+		case 104:
+			successor_q(client, successor_id, successor_port);
 			break;
 		}
 
@@ -657,11 +670,15 @@ void handle_udp_receives(triad_client *client) {
 					client->name, self_id, result, successor_id, successor_port,
 					flag);
 			if (flag) {
-				client->predecessor_udp_port = client->temp.tmp_predecessor_udp_port;
-				client->predecessor_triad_id = client->temp.tmp_predecessor_triad_id;
+				client->predecessor_udp_port =
+						client->temp.tmp_predecessor_udp_port;
+				client->predecessor_triad_id =
+						client->temp.tmp_predecessor_triad_id;
 			} else {
-				client->successor_udp_port = client->temp.tmp_successor_udp_port;
-				client->successor_triad_id = client->temp.tmp_successor_triad_id;
+				client->successor_udp_port =
+						client->temp.tmp_successor_udp_port;
+				client->successor_triad_id =
+						client->temp.tmp_successor_triad_id;
 			}
 		}
 

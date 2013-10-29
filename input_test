@@ -5,6 +5,12 @@ start_client foo
 # there may, of course, be comments anywhere
 start_client bar
 start_client baz
+#start_client alpha
+#start_client bravo
+#start_client charlie
+#start_client delta
+#start_client echo
+#start_client foxtrot
 # you can assume for stage 2 that no clients start after the first store or search
 #store alpha
 #store beta
