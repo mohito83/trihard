@@ -10,6 +10,7 @@
 
 #include "file_io_op.h"
 #include "sock_op.h"
+#include "my402list.h"
 #include <sys/shm.h>
 #include <sys/ipc.h>
 #include <sys/select.h>
@@ -31,9 +32,10 @@ typedef struct temp_data {
 typedef struct client {
 	char name[80];
 	char client_1_name[80];
+	My402List data_list;
 	unsigned int client_1_port;
 	unsigned int nonce;
-	unsigned int data_hash;	// hash key for the data
+	//unsigned int data_hash;	// hash key for the data
 
 	unsigned int client_1_triad_id;
 
@@ -54,5 +56,7 @@ typedef struct client {
 void do_client();
 
 void print_client_status(triad_client *client);
+
+int is_data_hash_present(triad_client *client, unsigned int hash_to_comapre);
 
 #endif /* CLIENT_H_ */
