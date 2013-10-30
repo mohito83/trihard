@@ -563,10 +563,9 @@ void store_q(triad_client *client, unsigned int successor_id,
 /**
  * This function will send the store -r message
  */
-void store_r(struct sockadd_in dest_addr, triad_client *client,
-		unsigned int self_id, unsigned int flag, unsigned int len,
-		unsigned int data) {
-	int status = 10, pointer = 0;
+void store_r(struct sockaddr_in dest_addr, triad_client *client,
+		unsigned int self_id, unsigned int flag, unsigned int len, char *data) {
+	int status = 10, pointer = 0, dlen = 0;
 	char buff[MAXSIZE];
 	memset(buff, 0, sizeof(buff));
 
@@ -579,8 +578,9 @@ void store_r(struct sockadd_in dest_addr, triad_client *client,
 
 	status = htonl(status);
 	self_id = htonl(self_id);
-	data = htonl(data);
+	//data = htonl(data);
 	flag = htonl(flag);
+	dlen = len;
 	len = htonl(len);
 
 	memset(buff, 0, sizeof(buff));
@@ -592,8 +592,8 @@ void store_r(struct sockadd_in dest_addr, triad_client *client,
 	pointer += sizeof(flag);
 	memcpy(buff + pointer, &len, sizeof(len));
 	pointer += sizeof(len);
-	memcpy(buff + pointer, &data, sizeof(data));
-	pointer += sizeof(data);
+	memcpy(buff + pointer, data, dlen);
+	pointer += dlen;
 
 	sendto(udp_sock_fd, buff, pointer, 0, (struct sockaddr*) &dest_addr,
 			sizeof(dest_addr));
@@ -612,17 +612,23 @@ void add_to_ring(triad_client *client) {
  * This function will reply the calculated nonce and local udp port back to the
  * manager once the node is added to the Triad ring.
  */
-void reply_to_manager(triad_client *client) {
+void reply_to_manager(triad_client *client, char *msg) {
+	char buffer[MAXSIZE];
 	int pid = getpid(); // to be sent to the manager.
 	//calculate the new nonce
 	printf("reply_to_manager: client=%s & udp_port=%d\n", client->name,
 			client->local_udp_port);
-	long new_nonce = client->nonce + pid;
-	printf("do_client: computed nounce is: %ld\n", new_nonce);
-	char buffer[MAXSIZE];
-	memset(buffer, 0, sizeof(buffer));
-	sprintf(buffer, "%ld %d\n%d\n", new_nonce, pid, client->local_udp_port);
-	printf("do_client: local udp port number = %d\n", client->local_udp_port);
+
+	if (msg == NULL) {
+		long new_nonce = client->nonce + pid;
+		printf("do_client: computed nounce is: %ld\n", new_nonce);
+		memset(buffer, 0, sizeof(buffer));
+		sprintf(buffer, "%ld %d\n%d\n", new_nonce, pid, client->local_udp_port);
+		printf("do_client: local udp port number = %d\n",
+				client->local_udp_port);
+	} else {
+		memcpy(buffer, msg, strlen(msg));
+	}
 	if (send(tcp_client_sock_fd, buffer, MAXSIZE - 1, 0) < 0) {
 		perror("Error sending data to server");
 	}
@@ -689,7 +695,7 @@ void handle_tcp_receives(triad_client *client) {
 		if (client->client_1_port == 0) { // only in the case of first client
 			client->predecessor_udp_port = client->local_udp_port;
 			client->successor_udp_port = client->local_udp_port;
-			reply_to_manager(client);
+			reply_to_manager(client, NULL);
 		}
 
 		break;
@@ -714,6 +720,7 @@ void handle_udp_receives(triad_client *client) {
 	unsigned int status = 0, data, pointer = 0, self_id = 0, successor_id = 0,
 			successor_port = 0, result, flag;
 	unsigned char buff[MAXSIZE];
+	char* temp;
 	struct sockaddr_in dest_addr;
 	socklen_t dest_addr_len = sizeof(struct sockaddr);
 	if (recvfrom(udp_sock_fd, buff, sizeof(buff), 0,
@@ -857,9 +864,12 @@ void handle_udp_receives(triad_client *client) {
 				"handle_udp_receives: client=%s\tstores-r received (0x%x 0x%x 0x%x %d %d)\n",
 				client->name, self_id, result, successor_id, successor_port,
 				flag);
-		/*9. store-q (ni; SL; S) store string S of length SL at node id ni. Presumably the hash of
-		 S should be in ni's currently covered portion of the ring.*/
-		store_q(client, successor_id, successor_port, strlen(str), str);
+
+		if (successor_id == self_id) {
+			store_q(client, successor_id, successor_port, strlen(str), str);
+		} else {
+			stores_q(client, successor_id, successor_port, str);
+		}
 
 		break;
 
@@ -943,7 +953,7 @@ void handle_udp_receives(triad_client *client) {
 
 		//TODO this is not the correct place to put this function .. rework required!!!:(
 		if (is_node_added_to_ring(client)) {
-			reply_to_manager(client);
+			reply_to_manager(client, NULL);
 		}
 		print_client_status(client);
 		break;
@@ -953,23 +963,38 @@ void handle_udp_receives(triad_client *client) {
 		pointer += sizeof(self_id);
 		memcpy(&result, buff + pointer, sizeof(result)); // result is used to store the string length
 		pointer += sizeof(result);
-		memcpy(&data, buff + pointer, sizeof(data)); // data is used to store the string
 
 		self_id = ntohl(self_id);
 		result = ntohl(result);
-		data = ntohl(data);
+		//data = ntohl(data);
+		temp = (char*) malloc(sizeof(char) * (result + 1));
+		if (temp == NULL) {
+			//log the transaction in the log file
+			fprintf(client_output_fd,
+					"store-q: Failed to Allocate new memory for storing the data\n");
+			fflush(client_output_fd);
+			printf(
+					"handle_udp_receives: store-q: Failed to Allocate new memory for storing the data for client=%s\n",
+					client->name);
+			store_r(dest_addr, client, self_id, 0, result, NULL);
+			return;
+		}
+		memset(temp, 0, result + 1);
+		memcpy(temp, buff + pointer, result); // data is used to store the string
+		*(temp + result) = '\0'; //adding null character at the end of the string
 
-		flag = add_data_to_client(client, data, result);
+		flag = add_data_to_client(client, temp, result);
 
 		//log the transaction in the log file
 		fprintf(client_output_fd, "store-q received (0x%x %d %s)\n", self_id,
-				result, data);
+				result, temp);
 		fflush(client_output_fd);
 		printf(
 				"handle_udp_receives: client=%s\tstore-q received (0x%x %d %s)\n",
-				client->name, self_id, result, data);
+				client->name, self_id, result, temp);
 
-		store_r(dest_addr, client, self_id, flag, result, data);
+		store_r(dest_addr, client, self_id, flag, result, temp);
+		free(temp);
 		break;
 
 	case 10:
@@ -979,21 +1004,31 @@ void handle_udp_receives(triad_client *client) {
 		pointer += sizeof(flag);
 		memcpy(&result, buff + pointer, sizeof(result)); //result is used to hold the string length information
 		pointer += sizeof(result);
-		memcpy(&data, buff + pointer, sizeof(data)); //data is used to store actual string
 
 		self_id = ntohl(self_id);
 		result = ntohl(result);
 		flag = ntohl(flag);
-		data = ntohl(data);
+
+		temp = (char*) malloc(result + 1);
+		memset(temp, 0, result + 1);
+		memcpy(temp, buff + pointer, result); //data is used to store actual string
+		*(temp + result) = '\0';
 
 		//log the transaction in the log file
 		fprintf(client_output_fd, "store-r received (0x%x %d %d %s)\n", self_id,
-				flag, result, data);
+				flag, result, temp);
 		fflush(client_output_fd);
 		printf(
 				"handle_udp_receives: client=%s\tstore-r received (0x%x %d %d %s)\n",
-				client->name, self_id, flag, result, data);
+				client->name, self_id, flag, result, temp);
+		free(temp);
 
+		//reply back to manager that data has been set
+		memset(buff, 0, sizeof(buff));
+		buff[0] = 'o';
+		buff[1] = 'k';
+		buff[2] = '\0';
+		reply_to_manager(client, (char*) buff);
 		break;
 	}
 }

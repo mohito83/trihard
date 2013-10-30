@@ -202,6 +202,7 @@ void send_command_to_client(int command, char* data) {
 	send(client1_tcp_sock_fd, buff, strlen(buff), 0);
 	if (recv(client1_tcp_sock_fd, buff, sizeof(buff), 0) < 0)
 		perror("Error in receiving data from client");
+	//TODO something with the response from the client 1
 }
 
 /**
