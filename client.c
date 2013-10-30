@@ -16,6 +16,8 @@ struct sockaddr_in client_tcp_server, udp_host_sock_addr;
 key_t client_key;
 FILE *client_output_fd;
 
+//TODO : handle the out of memory error. At OM error the manager as well as all clients should cease to exist
+
 /**
  * This function calculates the triad identity for the client
  */
@@ -867,6 +869,24 @@ void handle_udp_receives(triad_client *client) {
 
 		if (successor_id == self_id) {
 			store_q(client, successor_id, successor_port, strlen(str), str);
+		} else if (successor_id == client->client_1_triad_id) {
+			//This means none of the node can have the string and the client 1
+			//should store it. Hence it should log appropriate message in the log
+			//file as well as should reply back to manager with "ok" message.
+			add_data_to_client(client, str, strlen(str));
+			fprintf(client_output_fd, "add %s with hash 0x%x to node 0x%x\n",
+					str, get_triad_id(client->nonce, str), successor_id);
+			fflush(client_output_fd);
+			printf(
+					"handle_udp_receives: client=%s\tadd %s with hash 0x%x to node 0x%x\n",
+					client->name, str, get_triad_id(client->nonce, str),
+					successor_id);
+
+			memset(buff, 0, sizeof(buff));
+			char *tmp = "ok\n";
+			memcpy(buff, tmp, 2);
+			reply_to_manager(client, (char*) buff);
+
 		} else {
 			stores_q(client, successor_id, successor_port, str);
 		}
@@ -1017,6 +1037,8 @@ void handle_udp_receives(triad_client *client) {
 		//log the transaction in the log file
 		fprintf(client_output_fd, "store-r received (0x%x %d %d %s)\n", self_id,
 				flag, result, temp);
+		fprintf(client_output_fd, "add %s with hash 0x%x to node 0x%x\n", temp,
+				get_triad_id(client->nonce, temp), self_id);
 		fflush(client_output_fd);
 		printf(
 				"handle_udp_receives: client=%s\tstore-r received (0x%x %d %d %s)\n",
@@ -1025,9 +1047,8 @@ void handle_udp_receives(triad_client *client) {
 
 		//reply back to manager that data has been set
 		memset(buff, 0, sizeof(buff));
-		buff[0] = 'o';
-		buff[1] = 'k';
-		buff[2] = '\0';
+		char *tmp = "ok\n";
+		memcpy(buff, tmp, 2);
 		reply_to_manager(client, (char*) buff);
 		break;
 	}
@@ -1039,6 +1060,9 @@ void handle_udp_receives(triad_client *client) {
  */
 fd_set handle_io_synchronously(triad_client *client) {
 	fd_set readfds;
+	struct timeval tv;
+	tv.tv_sec = 10;
+	tv.tv_usec = 500000;
 	int kill_io = 0, rv;
 
 	//keep listening for incoming message on any socket file descriptors
@@ -1051,9 +1075,16 @@ fd_set handle_io_synchronously(triad_client *client) {
 
 		//wait only for reading purpose
 		rv = select(getMax(udp_sock_fd, tcp_client_sock_fd) + 1, &readfds, NULL,
-		NULL, NULL);
+		NULL, &tv);
 		if (rv == -1) {
 			perror("select");
+			break;
+		}
+		if (rv == 0) {
+			//time out has occurred, this implies that the manager is either has
+			//finished executing all instrcutions in the input file or has got
+			//into some block
+			kill_io = 1;
 			break;
 		} else {
 			//if TCP socket receives data
