@@ -275,6 +275,7 @@ void read_input_file(char *filename) {
 			break;
 		case 630:
 			printf("read_input_file: search %s\n", second);
+			send_command_to_client(630, second);
 			break;
 		}
 

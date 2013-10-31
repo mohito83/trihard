@@ -15,5 +15,5 @@ start_client baz
 store alpha
 store beta
 store gamma
-#search beta
+search beta
 #search delta

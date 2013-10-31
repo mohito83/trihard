@@ -16,6 +16,10 @@ struct sockaddr_in client_tcp_server, udp_host_sock_addr;
 key_t client_key;
 FILE *client_output_fd;
 
+int is_search = 0; //To identify whether the first client received search or store command from the manager.
+//0 for store S command and 1 for search S command. This is a risky peice of code. But I am confident that
+//only client will use this variable
+
 //TODO : handle the out of memory error. At OM error the manager as well as all clients should cease to exist
 
 /**
@@ -705,11 +709,19 @@ void handle_tcp_receives(triad_client *client) {
 		memset(str, 0, sizeof(str));
 		sscanf(buffer, "%d\n%s", &status, str);
 		printf("handle_tcp_receives: client=%s\tstore %s\n", client->name, str);
+		is_search = 0;
 		stores_q(client, client->successor_triad_id, client->successor_udp_port,
 				str);
 		break;
 	case 630:
-		printf("handle_tcp_receives: search \n");
+		memset(str, 0, sizeof(str));
+		sscanf(buffer, "%d\n%s", &status, str);
+		is_search = 1; // to identify that this a search operation and client 1
+					   //shouldn't send store-q request.
+		printf("handle_tcp_receives: client=%s\tsearch %s\n", client->name,
+				str);
+		stores_q(client, client->successor_triad_id, client->successor_udp_port,
+				str);
 		break;
 	}
 
@@ -873,7 +885,10 @@ void handle_udp_receives(triad_client *client) {
 			//This means none of the node can have the string and the client 1
 			//should store it. Hence it should log appropriate message in the log
 			//file as well as should reply back to manager with "ok" message.
-			add_data_to_client(client, str, strlen(str));
+			char *data=(char*)malloc((sizeof(char)*strlen(str))+1);
+			memcpy(data,str,strlen(str));
+			*(data+strlen(str)) = '\0';
+			int x = add_data_to_client(client, data, strlen(str));
 			fprintf(client_output_fd, "add %s with hash 0x%x to node 0x%x\n",
 					str, get_triad_id(client->nonce, str), successor_id);
 			fflush(client_output_fd);
@@ -886,7 +901,6 @@ void handle_udp_receives(triad_client *client) {
 			char *tmp = "ok\n";
 			memcpy(buff, tmp, 2);
 			reply_to_manager(client, (char*) buff);
-
 		} else {
 			stores_q(client, successor_id, successor_port, str);
 		}
@@ -1014,7 +1028,7 @@ void handle_udp_receives(triad_client *client) {
 				client->name, self_id, result, temp);
 
 		store_r(dest_addr, client, self_id, flag, result, temp);
-		free(temp);
+		//free(temp);
 		break;
 
 	case 10:
@@ -1043,7 +1057,7 @@ void handle_udp_receives(triad_client *client) {
 		printf(
 				"handle_udp_receives: client=%s\tstore-r received (0x%x %d %d %s)\n",
 				client->name, self_id, flag, result, temp);
-		free(temp);
+		//free(temp);
 
 		//reply back to manager that data has been set
 		memset(buff, 0, sizeof(buff));
