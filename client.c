@@ -880,22 +880,67 @@ void handle_udp_receives(triad_client *client) {
 				flag);
 
 		if (successor_id == self_id) {
-			store_q(client, successor_id, successor_port, strlen(str), str);
+			if (!flag && !is_search) {
+				store_q(client, successor_id, successor_port, strlen(str), str);
+			} else {
+				if (is_search) {
+					if (flag) {
+						fprintf(client_output_fd,
+								"search %s to node 0x%x, key PRESENT\n", str,
+								client->self_triad_id);
+						printf(
+								"handle_udp_receives:  search %s to node 0x%x, key PRESENT\n",
+								str, client->self_triad_id);
+					} else {
+						fprintf(client_output_fd,
+								"search %s to node 0x%x, key ABSENT\n", str,
+								client->self_triad_id);
+						printf(
+								"handle_udp_receives:  search %s to node 0x%x, key ABSENT\n",
+								str, client->self_triad_id);
+					}
+				}
+				memset(buff, 0, sizeof(buff));
+				char *tmp = "ok\n";
+				memcpy(buff, tmp, 2);
+			}
 		} else if (successor_id == client->client_1_triad_id) {
 			//This means none of the node can have the string and the client 1
 			//should store it. Hence it should log appropriate message in the log
 			//file as well as should reply back to manager with "ok" message.
-			char *data=(char*)malloc((sizeof(char)*strlen(str))+1);
-			memcpy(data,str,strlen(str));
-			*(data+strlen(str)) = '\0';
-			int x = add_data_to_client(client, data, strlen(str));
-			fprintf(client_output_fd, "add %s with hash 0x%x to node 0x%x\n",
-					str, get_triad_id(client->nonce, str), successor_id);
-			fflush(client_output_fd);
-			printf(
-					"handle_udp_receives: client=%s\tadd %s with hash 0x%x to node 0x%x\n",
-					client->name, str, get_triad_id(client->nonce, str),
-					successor_id);
+			if (!flag && !is_search) {
+				char *data = (char*) malloc((sizeof(char) * strlen(str)) + 1);
+				memcpy(data, str, strlen(str));
+				*(data + strlen(str)) = '\0';
+				int x = add_data_to_client(client, data, strlen(str));
+				printf("DEBUG-------->add_data_to_client()=%x\n", x);
+				fprintf(client_output_fd,
+						"add %s with hash 0x%x to node 0x%x\n", str,
+						get_triad_id(client->nonce, str), successor_id);
+				fflush(client_output_fd);
+				printf(
+						"handle_udp_receives: client=%s\tadd %s with hash 0x%x to node 0x%x\n",
+						client->name, str, get_triad_id(client->nonce, str),
+						successor_id);
+			} else {
+				if (is_search) {
+					if (is_data_hash_present(client,get_triad_id(client->nonce, str))) {
+						fprintf(client_output_fd,
+								"search %s to node 0x%x, key PRESENT\n", str,
+								client->self_triad_id);
+						printf(
+								"handle_udp_receives:  search %s to node 0x%x, key PRESENT\n",
+								str, client->self_triad_id);
+					} else {
+						fprintf(client_output_fd,
+								"search %s to node 0x%x, key ABSENT\n", str,
+								client->self_triad_id);
+						printf(
+								"handle_udp_receives:  search %s to node 0x%x, key ABSENT\n",
+								str, client->self_triad_id);
+					}
+				}
+			}
 
 			memset(buff, 0, sizeof(buff));
 			char *tmp = "ok\n";
@@ -904,7 +949,6 @@ void handle_udp_receives(triad_client *client) {
 		} else {
 			stores_q(client, successor_id, successor_port, str);
 		}
-
 		break;
 
 	case 7:

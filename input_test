@@ -16,4 +16,5 @@ store alpha
 store beta
 store gamma
 search beta
-#search delta
+search delta
+search alpha
