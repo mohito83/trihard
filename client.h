@@ -16,6 +16,7 @@
 #include <sys/select.h>
 #include <netinet/in.h>
 #include <string.h>
+#include <sys/fcntl.h>
 
 #define SEGSIZE 10
 #define MAXSIZE 256

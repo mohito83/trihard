@@ -15,7 +15,9 @@ int status, client_shmid, tcp_client_sock_fd, udp_sock_fd;
 struct sockaddr_in client_tcp_server, udp_host_sock_addr;
 key_t client_key;
 FILE *client_output_fd;
+fd_set readfds;
 
+int tcp_flags, udp_flags;
 int is_search = 0; //To identify whether the first client received search or store command from the manager.
 //0 for store S command and 1 for search S command. This is a risky peice of code. But I am confident that
 //only client will use this variable
@@ -121,7 +123,6 @@ void init_client(triad_client *client) {
 	 */
 	if ((client_shmid = shmget(client_key, SEGSIZE, 0666)) < 0) {
 		perror("shmget");
-		exit(1);
 	}
 
 	/*
@@ -129,7 +130,6 @@ void init_client(triad_client *client) {
 	 */
 	if ((client_shm = shmat(client_shmid, NULL, 0)) == (char *) -1) {
 		perror("shmat");
-		exit(1);
 	}
 
 	// --END
@@ -142,15 +142,19 @@ void init_client(triad_client *client) {
 	//set the udp connection
 	memset(&udp_host_sock_addr, 0, sizeof(udp_host_sock_addr));
 	udp_sock_fd = create_udp_socket();
+
+	int user = 1;
+	setsockopt(udp_sock_fd, SOL_SOCKET, SO_REUSEADDR, &user, sizeof(user));
+	setsockopt(tcp_client_sock_fd, SOL_SOCKET, SO_REUSEADDR, &user, sizeof(user));
+
 	populate_sockaddr_in(&udp_host_sock_addr, "localhost",
 			client->local_udp_port);
 	if (bind_address(udp_sock_fd, udp_host_sock_addr) < 0) {
 		perror("Error biding the address to socket. Exiting!!");
-		exit(0);
 	}
 }
 
-void destroy_client(fd_set readfds) {
+void destroy_client(/*fd_set readfds*/) {
 	FD_ZERO(&readfds);
 	close(udp_sock_fd);
 	close(tcp_client_sock_fd);
@@ -626,6 +630,15 @@ void reply_to_manager(triad_client *client, char *msg) {
 			client->local_udp_port);
 
 	if (msg == NULL) {
+		/*fcntl(tcp_client_sock_fd, F_GETFL, tcp_flags);
+		fcntl(tcp_client_sock_fd, F_SETFL, tcp_flags | O_NONBLOCK);
+
+		fcntl(udp_sock_fd, F_GETFL, udp_flags);
+		fcntl(udp_sock_fd, F_SETFL, udp_flags | O_NONBLOCK);
+
+		FD_SET(tcp_client_sock_fd, &readfds);
+		FD_SET(udp_sock_fd, &readfds);*/
+
 		long new_nonce = client->nonce + pid;
 		printf("do_client: computed nounce is: %ld\n", new_nonce);
 		memset(buffer, 0, sizeof(buffer));
@@ -633,11 +646,13 @@ void reply_to_manager(triad_client *client, char *msg) {
 		printf("do_client: local udp port number = %d\n",
 				client->local_udp_port);
 	} else {
+		printf("test: message==>%s\n",msg);
 		memcpy(buffer, msg, strlen(msg));
 	}
 	if (send(tcp_client_sock_fd, buffer, MAXSIZE - 1, 0) < 0) {
 		perror("Error sending data to server");
 	}
+
 }
 
 /**
@@ -903,6 +918,7 @@ void handle_udp_receives(triad_client *client) {
 				memset(buff, 0, sizeof(buff));
 				char *tmp = "ok\n";
 				memcpy(buff, tmp, 2);
+				reply_to_manager(client, (char*) buff);
 			}
 		} else if (successor_id == client->client_1_triad_id) {
 			//This means none of the node can have the string and the client 1
@@ -924,7 +940,8 @@ void handle_udp_receives(triad_client *client) {
 						successor_id);
 			} else {
 				if (is_search) {
-					if (is_data_hash_present(client,get_triad_id(client->nonce, str))) {
+					if (is_data_hash_present(client,
+							get_triad_id(client->nonce, str))) {
 						fprintf(client_output_fd,
 								"search %s to node 0x%x, key PRESENT\n", str,
 								client->self_triad_id);
@@ -1116,17 +1133,16 @@ void handle_udp_receives(triad_client *client) {
  * This function handles the I/O synchronously between multiple socket
  * file descriptors
  */
-fd_set handle_io_synchronously(triad_client *client) {
-	fd_set readfds;
+void handle_io_synchronously(triad_client *client) {
 	struct timeval tv;
-	tv.tv_sec = 10;
+	tv.tv_sec = 5;
 	tv.tv_usec = 500000;
 	int kill_io = 0, rv;
 
+	FD_ZERO(&readfds);
+
 	//keep listening for incoming message on any socket file descriptors
 	do {
-		//initialize the select
-		FD_ZERO(&readfds);
 		// add TCP and UDP descriptors to the set
 		FD_SET(tcp_client_sock_fd, &readfds);
 		FD_SET(udp_sock_fd, &readfds);
@@ -1142,6 +1158,7 @@ fd_set handle_io_synchronously(triad_client *client) {
 			//time out has occurred, this implies that the manager is either has
 			//finished executing all instrcutions in the input file or has got
 			//into some block
+			perror("select:timeout");
 			kill_io = 1;
 			break;
 		} else {
@@ -1159,7 +1176,9 @@ fd_set handle_io_synchronously(triad_client *client) {
 
 	} while (kill_io == 0);
 
-	return readfds;
+	/*return readfds;*/
+
+	//use poll() instead
 }
 
 /**
@@ -1200,7 +1219,7 @@ void do_client() {
 			sizeof(client_tcp_server)) < 0);
 
 	//ideal spot to put select() for synchronously hanlding the I/O
-	fd_set readfds = handle_io_synchronously(&client);
-	destroy_client(readfds);
+	/*fd_set readfds =*/handle_io_synchronously(&client);
+	destroy_client(/*readfds*/);
 
 }

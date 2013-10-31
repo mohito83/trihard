@@ -9,6 +9,7 @@
 #include "sock_op.h"
 #include "client.h"
 #include "sha1.h"
+#include <signal.h>
 
 /**
  * a[0]: stage #
@@ -18,7 +19,7 @@
 //long a[3] = { 0, 0, 0 };
 long nonce = 0;
 int stage, status, client1_port_no = 0;
-const char* output_filename = "stage2.manager.out";
+char output_filename[20];
 char client1_name[80];
 //an array to hold the udp port numbers of all the clients
 //The array index will be used to identify the udp port of the clients
@@ -42,6 +43,8 @@ FILE* out_file_stream;
  * This function will initialize the connection and stuff
  */
 void init_process() {
+
+	signal (SIGCHLD,SIG_IGN);
 	memset(client_udp_ports, 0, sizeof(client_udp_ports));
 	//4. Create shared memory area with the child processes.
 	// REUSED CODE :- http://www.tldp.org/LDP/lpg/node81.html
@@ -64,10 +67,6 @@ void init_process() {
 
 	//--END
 
-	//open file in output stream
-	out_file_stream = open_file(output_filename, "w");
-	//fprintf(out_file_stream, "stage 1\n");
-
 	//3. set up TCP server at manager
 	tcp_serv_sock_fd = create_tcp_socket();
 	populate_sockaddr_in(&client_tcp_server, "localhost", 0);
@@ -81,9 +80,6 @@ void init_process() {
 	if (getsockname(tcp_serv_sock_fd, (struct sockaddr *) &tmp, &size) < 0) {
 		perror("Error getting port number information!!");
 		exit(0);
-	} else {
-		fprintf(out_file_stream, "manager port: %u\n", ntohs(tmp.sin_port));
-		fflush(out_file_stream);
 	}
 
 	//listen for incomming connections
@@ -202,6 +198,14 @@ void send_command_to_client(int command, char* data) {
 	send(client1_tcp_sock_fd, buff, strlen(buff), 0);
 	if (recv(client1_tcp_sock_fd, buff, sizeof(buff), 0) < 0)
 		perror("Error in receiving data from client");
+	switch (command) {
+	case 557:
+		printf("send_command_to_client: store response received\n");
+		break;
+	case 630:
+		printf("send_command_to_client: search response received\n");
+		break;
+	}
 	//TODO something with the response from the client 1
 }
 
@@ -241,6 +245,12 @@ void read_input_file(char *filename) {
 		switch (status = sum(first)) {
 		case 532:
 			stage = atoi(second);
+			memset(output_filename, 0, sizeof(output_filename));
+			sprintf(output_filename, "stage%d.manager.out", stage);
+			//open file in output stream
+			out_file_stream = open_file(output_filename, "w");
+			fprintf(out_file_stream, "manager port: %u\n", ntohs(tmp.sin_port));
+			fflush(out_file_stream);
 			break;
 		case 531:
 			nonce = atol(second);
@@ -320,6 +330,7 @@ int main(int argc, char *argv[]) {
 
 	//1. read the input parameter file
 	read_input_file(filename);
+	sleep(2);	//to see if that helps the last client being stuck at infinite loop
 
 	destroy_process();
 	return 0;
