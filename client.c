@@ -145,7 +145,8 @@ void init_client(triad_client *client) {
 
 	int user = 1;
 	setsockopt(udp_sock_fd, SOL_SOCKET, SO_REUSEADDR, &user, sizeof(user));
-	setsockopt(tcp_client_sock_fd, SOL_SOCKET, SO_REUSEADDR, &user, sizeof(user));
+	setsockopt(tcp_client_sock_fd, SOL_SOCKET, SO_REUSEADDR, &user,
+			sizeof(user));
 
 	populate_sockaddr_in(&udp_host_sock_addr, "localhost",
 			client->local_udp_port);
@@ -631,13 +632,13 @@ void reply_to_manager(triad_client *client, char *msg) {
 
 	if (msg == NULL) {
 		/*fcntl(tcp_client_sock_fd, F_GETFL, tcp_flags);
-		fcntl(tcp_client_sock_fd, F_SETFL, tcp_flags | O_NONBLOCK);
+		 fcntl(tcp_client_sock_fd, F_SETFL, tcp_flags | O_NONBLOCK);
 
-		fcntl(udp_sock_fd, F_GETFL, udp_flags);
-		fcntl(udp_sock_fd, F_SETFL, udp_flags | O_NONBLOCK);
+		 fcntl(udp_sock_fd, F_GETFL, udp_flags);
+		 fcntl(udp_sock_fd, F_SETFL, udp_flags | O_NONBLOCK);
 
-		FD_SET(tcp_client_sock_fd, &readfds);
-		FD_SET(udp_sock_fd, &readfds);*/
+		 FD_SET(tcp_client_sock_fd, &readfds);
+		 FD_SET(udp_sock_fd, &readfds);*/
 
 		long new_nonce = client->nonce + pid;
 		printf("do_client: computed nounce is: %ld\n", new_nonce);
@@ -646,13 +647,50 @@ void reply_to_manager(triad_client *client, char *msg) {
 		printf("do_client: local udp port number = %d\n",
 				client->local_udp_port);
 	} else {
-		printf("test: message==>%s\n",msg);
+		printf("test: message==>%s\n", msg);
 		memcpy(buffer, msg, strlen(msg));
 	}
 	if (send(tcp_client_sock_fd, buffer, MAXSIZE - 1, 0) < 0) {
 		perror("Error sending data to server");
 	}
 
+}
+
+void send_stores_q_mssg(triad_client *client, char *buffer) {
+	int status;
+	memset(str, 0, sizeof(str));
+	sscanf(buffer, "%d\n%s", &status, str);
+	printf("send_stores_q_mssg: client=%s\tstore %s\n", client->name, str);
+
+	//decide if the hash value of string belong to the first client then save
+	//that string on the client 1 and reply back to the manager
+	unsigned int hash = get_triad_id(client->nonce, str);
+	if (client->predecessor_triad_id < hash && hash <= client->self_triad_id) {
+		char *data = (char*) malloc((sizeof(char) * strlen(str)) + 1);
+		memcpy(data, str, strlen(str));
+		*(data + strlen(str)) = '\0';
+		int x = add_data_to_client(client, data, strlen(data));
+		printf("DEBUG------->add_data_to_client=%d\n", x);
+		if (x == 1) {
+			fprintf(client_output_fd, "add %s with hash 0x%x to node 0x%x\n",
+					str, get_triad_id(client->nonce, str),
+					client->self_triad_id);
+			fflush(client_output_fd);
+			printf(
+					"send_stores_q_mssg: client=%s\tadd %s with hash 0x%x to node 0x%x\n",
+					client->name, str, get_triad_id(client->nonce, str),
+					client->self_triad_id);
+		}
+		char buff[4];
+		memset(buff, 0, sizeof(buff));
+		char *tmp = "ok\n";
+		memcpy(buff, tmp, 3);
+		buff[4] = '\0';
+		reply_to_manager(client, buff);
+	} else {
+		stores_q(client, client->successor_triad_id, client->successor_udp_port,
+				str);
+	}
 }
 
 /**
@@ -721,22 +759,12 @@ void handle_tcp_receives(triad_client *client) {
 
 		break;
 	case 557:
-		memset(str, 0, sizeof(str));
-		sscanf(buffer, "%d\n%s", &status, str);
-		printf("handle_tcp_receives: client=%s\tstore %s\n", client->name, str);
 		is_search = 0;
-		stores_q(client, client->successor_triad_id, client->successor_udp_port,
-				str);
+		send_stores_q_mssg(client, buffer);
 		break;
 	case 630:
-		memset(str, 0, sizeof(str));
-		sscanf(buffer, "%d\n%s", &status, str);
-		is_search = 1; // to identify that this a search operation and client 1
-					   //shouldn't send store-q request.
-		printf("handle_tcp_receives: client=%s\tsearch %s\n", client->name,
-				str);
-		stores_q(client, client->successor_triad_id, client->successor_udp_port,
-				str);
+		is_search = 1; //flag to identofy whether the operation was search or store.
+		send_stores_q_mssg(client, buffer);
 		break;
 	}
 
@@ -852,8 +880,27 @@ void handle_udp_receives(triad_client *client) {
 
 		/*stores-r (ni; di; ri; rp; has) reply stating that ni's best estimate of the node that stores
 		 di has id ri at port rp.*/
-		if (result > client->predecessor_triad_id
-				&& result <= client->self_triad_id) {
+		/*printf(
+		 "DEBUD----->(result > client->predecessor_triad_id&& result <= client->self_triad_id)=%d",
+		 (result > client->predecessor_triad_id
+		 && result <= client->self_triad_id));
+		 printf(
+		 "DEBUD----->(client->predecessor_triad_id > client->self_triad_id && result > client->self_triad_id && result > client->predecessor_triad_id)=%d",
+		 (result > client->predecessor_triad_id
+		 && result <= client->self_triad_id));
+		 printf(
+		 "DEBUD----->(client->predecessor_triad_id > client->self_triad_id && result < client->self_triad_id && result < client->predecessor_triad_id)=%d",
+		 (result > client->predecessor_triad_id
+		 && result <= client->self_triad_id));*/
+		if ((result > client->predecessor_triad_id
+				&& result <= client->self_triad_id)
+				|| (client->predecessor_triad_id > client->self_triad_id
+						&& result > client->self_triad_id
+						&& result > client->predecessor_triad_id)
+				|| (client->predecessor_triad_id > client->self_triad_id
+						&& result < client->self_triad_id
+						&& result < client->predecessor_triad_id)
+				|| (result == client->self_triad_id)) {
 			flag = self_id == client->self_triad_id
 					&& is_data_hash_present(client, result) ? 1 : 0;
 			successor_id = client->self_triad_id;
@@ -902,17 +949,17 @@ void handle_udp_receives(triad_client *client) {
 					if (flag) {
 						fprintf(client_output_fd,
 								"search %s to node 0x%x, key PRESENT\n", str,
-								client->self_triad_id);
+								successor_id);
 						printf(
 								"handle_udp_receives:  search %s to node 0x%x, key PRESENT\n",
-								str, client->self_triad_id);
+								str, successor_id);
 					} else {
 						fprintf(client_output_fd,
 								"search %s to node 0x%x, key ABSENT\n", str,
-								client->self_triad_id);
+								successor_id);
 						printf(
 								"handle_udp_receives:  search %s to node 0x%x, key ABSENT\n",
-								str, client->self_triad_id);
+								str, successor_id);
 					}
 				}
 				memset(buff, 0, sizeof(buff));
@@ -947,14 +994,14 @@ void handle_udp_receives(triad_client *client) {
 								client->self_triad_id);
 						printf(
 								"handle_udp_receives:  search %s to node 0x%x, key PRESENT\n",
-								str, client->self_triad_id);
+								str, successor_id);
 					} else {
 						fprintf(client_output_fd,
 								"search %s to node 0x%x, key ABSENT\n", str,
 								client->self_triad_id);
 						printf(
 								"handle_udp_receives:  search %s to node 0x%x, key ABSENT\n",
-								str, client->self_triad_id);
+								str, successor_id);
 					}
 				}
 			}
