@@ -44,7 +44,7 @@ FILE* out_file_stream;
  */
 void init_process() {
 
-	signal (SIGCHLD,SIG_IGN);
+	signal(SIGCHLD, SIG_IGN);
 	memset(client_udp_ports, 0, sizeof(client_udp_ports));
 	//4. Create shared memory area with the child processes.
 	// REUSED CODE :- http://www.tldp.org/LDP/lpg/node81.html
@@ -280,10 +280,14 @@ void read_input_file(char *filename) {
 			}
 			break;
 		case 557:
+			/*if(stage>3)
+			 sleep(1);*/
 			printf("read_input_file: store %s\n", second);
 			send_command_to_client(557, second);
 			break;
 		case 630:
+			if (stage > 3)
+				sleep(1);
 			printf("read_input_file: search %s\n", second);
 			send_command_to_client(630, second);
 			break;
@@ -330,7 +334,7 @@ int main(int argc, char *argv[]) {
 
 	//1. read the input parameter file
 	read_input_file(filename);
-	sleep(2);	//to see if that helps the last client being stuck at infinite loop
+	sleep(2);//to see if that helps the last client being stuck at infinite loop
 
 	destroy_process();
 	return 0;
