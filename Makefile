@@ -1,5 +1,5 @@
 projb: my402list.o sha1.o file_io_op.o sock_op.o manager.o client.o my402list.o
-	gcc -Wall -g -o projb file_io_op.o sock_op.o sha1.o manager.o client.o my402list.o
+	gcc -Wall -g -o projb file_io_op.o sock_op.o sha1.o manager.o client.o my402list.o -lm
 	
 manager.o: manager.c file_io_op.h client.h
 	gcc -Wall -g -c manager.c

@@ -21,6 +21,18 @@
 #define SEGSIZE 10
 #define MAXSIZE 256
 #define BACKLOG_QUEUE 100
+#define NAME_LENGTH     80
+#define FINGER_TABLE_SIZE 32
+
+/****************************************************
+ *************Finger Table Entry**********************
+ *****************************************************/
+typedef struct finger_table_entry {
+	unsigned int start_int;
+	unsigned int end_int;
+	unsigned int successor_id;
+	unsigned int successor_port;
+} finger_entry_t;
 
 typedef struct temp_data {
 	unsigned int tmp_predecessor_triad_id;
@@ -52,7 +64,13 @@ typedef struct client {
 
 	//temporary data items to be
 	temp_client_data temp;
+	finger_entry_t f_entry_t[FINGER_TABLE_SIZE];
 } triad_client;
+
+typedef struct my_node {
+	unsigned int triad_id;
+	unsigned int port_no;
+} node;
 
 void do_client();
 
