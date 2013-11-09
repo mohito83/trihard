@@ -766,14 +766,14 @@ void reply_to_manager(triad_client *client, char *msg) {
 			client->local_udp_port);
 
 	if (msg == NULL) {
-		fcntl(tcp_client_sock_fd, F_GETFL, tcp_flags);
+		/*fcntl(tcp_client_sock_fd, F_GETFL, tcp_flags);
 		 fcntl(tcp_client_sock_fd, F_SETFL, tcp_flags | O_SYNC);
 
 		 fcntl(udp_sock_fd, F_GETFL, udp_flags);
 		 fcntl(udp_sock_fd, F_SETFL, udp_flags | O_SYNC);
 
 		 FD_SET(tcp_client_sock_fd, &readfds);
-		 FD_SET(udp_sock_fd, &readfds);
+		 FD_SET(udp_sock_fd, &readfds);*/
 
 		long new_nonce = client->nonce + pid;
 		printf("do_client: computed nounce is: %ld\n", new_nonce);
@@ -785,9 +785,9 @@ void reply_to_manager(triad_client *client, char *msg) {
 		printf("test: message==>%s\n", msg);
 		memcpy(buffer, msg, strlen(msg));
 	}
-	/*if(client_stage>3){
+	if(client_stage>3){
 		sleep(1);
-	}*/
+	}
 	if (send(tcp_client_sock_fd, buffer, MAXSIZE - 1, 0) < 0) {
 		perror("Error sending data to server");
 	}

@@ -2,15 +2,14 @@ stage 4
 # note, on the nonce line,
 # replace dddd with the first four digits
 # of your student id
-#nonce 9243
-nonce 1234
+nonce 9243
+#nonce 1234
 start_client alpha
 start_client bravo
 start_client charlie
 start_client delta
 start_client echo
 start_client foxtrot
-start_client logmsg
 store alpha
 store beta
 store gamma
@@ -18,4 +17,3 @@ store delta
 store epsilon
 search beta
 search delta
-search mohit
