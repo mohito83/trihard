@@ -1,81 +1,196 @@
 /*
- * client.h
+ * This code "USC CSci551 Projects A and B FA2011" is
+ * Copyright (C) 2011 by Xun Fan.
+ * All rights reserved.
  *
- *  Created on: Oct 24, 2013
- *      Author: csci551
+ * This program is released ONLY for the purposes of Fall 2011 CSci551
+ * students who wish to use it as part of their Project C assignment.
+ * Use for another other purpose requires prior written approval by
+ * Xun Fan.
+ *
+ * Use in CSci551 is permitted only provided that ALL copyright notices
+ * are maintained and that this code is distinguished from new
+ * (student-added) code as much as possible.  We new services to be
+ * placed in separate (new) files as much as possible.  If you add
+ * significant code to existing files, identify your new code with
+ * comments.
+ *
+ * As per class assignments, use of any code OTHER than this provided
+ * code requires explicit approval, ahead of time, by the professor.
+ *
  */
 
-#ifndef CLIENT_H_
-#define CLIENT_H_
 
-#include "file_io_op.h"
-#include "sock_op.h"
-#include "my402list.h"
-#include <sys/shm.h>
-#include <sys/ipc.h>
-#include <sys/select.h>
-#include <netinet/in.h>
-#include <string.h>
-#include <sys/fcntl.h>
+// File name:   client.h
+// Author:    Xun Fan (xunfan@usc.edu)
+// Date:    2011.8
+// Description: CSCI551 fall 2011 project b, client module header file.
 
-#define SEGSIZE 10
-#define MAXSIZE 256
-#define BACKLOG_QUEUE 100
-#define NAME_LENGTH     80
-#define FINGER_TABLE_SIZE 32
+#ifndef _CLIENT_H
+#define _CLIENT_H
 
-/****************************************************
- *************Finger Table Entry**********************
- *****************************************************/
-typedef struct finger_table_entry {
-	unsigned int start_int;
-	unsigned int end_int;
-	unsigned int successor_id;
-	unsigned int successor_port;
-} finger_entry_t;
+// Triadnode
+typedef struct TriadNode{
+  unsigned int id;
+  unsigned short port;
+}TNode;
 
-typedef struct temp_data {
-	unsigned int tmp_predecessor_triad_id;
-	unsigned int tmp_successor_triad_id;
+// message type
+#define SUCCQ 1
+#define SUCCR 2
+#define PREDQ 3
+#define PREDR 4
+#define CLSTQ 5
+#define CLSTR 6
+#define UPDTQ 7
+#define UPDTR 8
+#define STORQ 9
+#define STORR 10
+#define LEAVQ 21
+#define LEAVR 22
+#define NXTDQ 23
+#define NXTDR 24
 
-	unsigned int tmp_predecessor_udp_port;
-	unsigned int tmp_successor_udp_port;
-} temp_client_data;
+#define MAX_TEXT_SIZE 96
 
-typedef struct client {
-	char name[80];
-	char client_1_name[80];
-	My402List data_list;
-	unsigned int client_1_port;
-	unsigned int nonce;
-	//unsigned int data_hash;	// hash key for the data
+#define HASHMAX 0xFFFFFFFF
 
-	unsigned int client_1_triad_id;
+#define SENTFLAG 1
+#define RECVFLAG 2
 
-	unsigned int self_triad_id;
-	unsigned int predecessor_triad_id;
-	unsigned int successor_triad_id;
+#define FTLEN 33
 
-	unsigned int local_udp_port;
-	unsigned int predecessor_udp_port;
-	unsigned int successor_udp_port;
+// Triad messages
+typedef struct ngbrquerymsg{  // for successor query and predecessor query
+  int msgid;
+  unsigned int  ni;
+}NGQM, *pngqm;
 
-	unsigned int manager_tcp_port;
+typedef struct ngbrreplymsg{  // for successor reply and predecessor reply
+  int msgid;
+  unsigned int  ni;
+  unsigned int  si;
+  int sp;
+}NGRM, *pngrm;
 
-	//temporary data items to be
-	temp_client_data temp;
-	finger_entry_t f_entry_t[FINGER_TABLE_SIZE];
-} triad_client;
+typedef struct clstquerymsg{
+  int   msgid;
+  unsigned int  ni;
+  unsigned int  di;
+}CLQM, *pclqm;
 
-typedef struct my_node {
-	unsigned int triad_id;
-	unsigned int port_no;
-} node;
+typedef struct clstreplymsg{
+  int msgid;
+  unsigned int  ni;
+  unsigned int  di;
+  unsigned int  ri;
+  int rp;
+  int nhas;
+}CLRM, *pclrm;
 
-void do_client();
 
-void print_client_status(triad_client *client);
+typedef struct updtquerymsg{
+  int msgid;
+  unsigned int  ni;
+  unsigned int  si;
+  int sp;
+  int i;
+}UPQM, *pupqm;
 
-int is_data_hash_present(triad_client *client, unsigned int hash_to_comapre);
+typedef struct storquerymsg{
+  int   msgid;
+  unsigned int  ni;
+  int sl;
+}STQM, *pstqm;
 
-#endif /* CLIENT_H_ */
+typedef struct storreplymsg{
+  int msgid;
+  unsigned int  ni;
+  int r;
+  int sl;
+}STRM, *pstrm;
+
+typedef struct updtreplymsg{
+  int msgid;
+  unsigned int  ni;
+  int       r;
+  unsigned int  si;
+  int sp;
+  int i;
+}UPRM, *puprm;
+
+typedef struct leavquerymsg{
+  int msgid;
+  unsigned int ni;
+  unsigned int di;
+}LEQM, *pleqm;
+
+typedef struct leavreplymsg{
+  int msgid;
+  unsigned int ni;
+}LERM, *plerm;
+
+typedef struct nxtdquerymsg{
+  int msgid;
+  unsigned int di;
+  unsigned int id;
+}NXQM, *pnxqm;
+
+typedef struct nxtdreplymsg{
+  int msgid;
+  unsigned int di;
+  unsigned int qid;
+  unsigned int rid;
+  int sl;
+}NXRM, *pnxrm;
+
+
+typedef struct ClientStore
+{
+  char txt[MAX_TEXT_SIZE];
+  unsigned int id;  // hash id of the str
+  struct ClientStore *next;
+}CSTORE, *pCStore;
+
+// finger table structure, one direction ring
+typedef struct FingerTableNode
+{
+  unsigned int  start;
+  unsigned int  end;
+  TNode   node;
+}FTNODE;
+
+
+
+
+int client(int mgrport);
+int GetInitInfo(int sock, char *selfname, char *firstnode, unsigned int *nonce, unsigned short *port);
+int JoinRing(int sock);
+int FindNeighbor(int sock, int msgtype, TNode na, TNode *pnb);
+void LogTyiadMsg(int type, int sorr, char *buf);
+int UpdateNeighbor(int sock, TNode *chgpreNode, TNode *chgsucNode);
+int HandleUdpMessage(int sock);
+int HandleStoreMsg(int sock, char *str);
+int HandleSearchMsg(int sock, char *str);
+int SearchClientStore(unsigned int id, char *str);
+int FindClosest(int sock, int msgt, unsigned int targetid, TNode na, TNode *pnb);
+void InitFingerTableSelf();
+int InitFingerTable(int sock);
+int FindSuccWithFT(int sock, unsigned int id, TNode *retnode);
+int UpdateOthers(int sock);
+
+int UpdateFingerTable(int sock, TNode tn, TNode sn, int idx);
+int UpdateMyFingerTable(int sock, TNode s, int idx);
+void UpdateMyFingerTableInit();
+void ClosestPrecedingFinger(unsigned int id, TNode *tn);
+
+// functions that used in stage 4, 5
+int JoinRingWithFingerTable(int sock);
+int HandleEndClient(int sock);
+int LeaveUpdateNeighbor(int sock, TNode *chgpreNode, TNode *chgsucNode);
+
+void AddClientStore(unsigned int id, char *str);
+
+// debug only
+void LogFingerTable();
+#endif

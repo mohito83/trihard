@@ -11,6 +11,7 @@
 
 /* csci551 fa2011 change begin */
 #include <stdint.h>
+#include <stdlib.h>
 /*
  * This source is openbsd which likes u_int32_t;
  * POSIX says uint32_t. 
@@ -19,6 +20,7 @@
 #define u_int32_t uint32_t
 #define u_int64_t uint64_t
 unsigned int projb_hash(unsigned char *buffer, int buffer_length);
+unsigned int gethashid(unsigned int nonce, char *name);
 /* csci551 fa2011 change end */
 
 #define SHA1_BLOCK_LENGTH               64

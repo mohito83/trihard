@@ -51,7 +51,6 @@
 #if BYTE_ORDER == LITTLE_ENDIAN
 #define blk0(i) (block->l[i] = (rol(block->l[i],24)&0xFF00FF00) \
     |(rol(block->l[i],8)&0x00FF00FF))
-static int bo = LITTLE_ENDIAN;
 #else
 #define blk0(i) block->l[i]
 static int bo = BIG_ENDIAN;
@@ -122,7 +121,6 @@ SHA1Transform(u_int32_t state[5], const unsigned char buffer[SHA1_BLOCK_LENGTH])
     state[4] += e;
     /* Wipe variables */
     a = b = c = d = e = 0;
-    (void)bo; // cs551 fa2013 - suppress warnings
 }
 
 
@@ -216,4 +214,22 @@ projb_hash(unsigned char *buffer, int buffer_length)
 	result = ntohl(result);
 	return result;
 }
+
+// convert nonce and name to a hash
+unsigned int gethashid(unsigned int nonce, char *name){
+  unsigned char   *buf;
+  int   NonceNet = htonl(nonce);
+  int buflen = 0;
+  unsigned int ret;
+  
+  buflen = sizeof(int) + strlen(name);
+  buf = (unsigned char *)malloc(buflen);
+  memcpy(buf, &NonceNet, sizeof(int));
+  memcpy(buf+sizeof(int), name, strlen(name));
+  
+  ret = projb_hash(buf, buflen);
+  free(buf);
+  return ret;
+}
+
 /* cs551 fa2011 code end */

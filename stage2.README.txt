@@ -1,7 +1,0 @@
-2.1) Have you implemented all the requirements of this stage? if not, which are missing?
-This stage is complete and is ready for veirifcation and grading.
-
-2.2) Did you use any library other than those presented on the moodle page? if so, what
-one and to do what?
-I have used my402list.* files in application. These files were part of my CSCI402 assignment. And I have used them to implement a doubly linked list for saving data strings on the triad nodes.
-

@@ -1,341 +1,435 @@
 /*
- * manager.c
+ * This code "USC CSci551 Projects A and B FA2011" is
+ * Copyright (C) 2011 by Xun Fan.
+ * All rights reserved.
  *
- *  Created on: Sep 28, 2013
- *      Author: csci551
+ * This program is released ONLY for the purposes of Fall 2011 CSci551
+ * students who wish to use it as part of their Project C assignment.
+ * Use for another other purpose requires prior written approval by
+ * Xun Fan.
+ *
+ * Use in CSci551 is permitted only provided that ALL copyright notices
+ * are maintained and that this code is distinguished from new
+ * (student-added) code as much as possible.  We new services to be
+ * placed in separate (new) files as much as possible.  If you add
+ * significant code to existing files, identify your new code with
+ * comments.
+ *
+ * As per class assignments, use of any code OTHER than this provided
+ * code requires explicit approval, ahead of time, by the professor.
+ *
  */
 
-#include "file_io_op.h"
-#include "sock_op.h"
+
+// File name: 	manager.c
+// Author: 		Xun Fan (xunfan@usc.edu)
+// Date: 		2011.8
+// Description: CSCI551 fall 2011 project b, manager module source file.
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <sys/socket.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+
+#include "manager.h"
 #include "client.h"
+#include "comm.h"
 #include "sha1.h"
-#include <signal.h>
 
-/**
- * a[0]: stage #
- * a[1]: # of clients
- * a[2]: nounce
- */
-//long a[3] = { 0, 0, 0 };
-long nonce = 0;
-int stage, status, client1_port_no = 0;
-char output_filename[20];
-char client1_name[80];
-//an array to hold the udp port numbers of all the clients
-//The array index will be used to identify the udp port of the clients
-int client_udp_ports[MAXSIZE], client1_tcp_sock_fd;
 
-/*
- * For shared memory
- */
-int shmid, cntr;
-char *segptr;
 
-/**
- * For TCP socket prep
- */
-struct sockaddr_in client_tcp_server, tmp, tcp_client;
-int tcp_serv_sock_fd;
 
-FILE* out_file_stream;
+int nWrknum = 0;
+char logfilename[256] = {0};
 
-/**
- * This function will initialize the connection and stuff
- */
-void init_process() {
+int sockMax;
 
-	signal(SIGCHLD, SIG_IGN);
-	memset(client_udp_ports, 0, sizeof(client_udp_ports));
-	//4. Create shared memory area with the child processes.
-	// REUSED CODE :- http://www.tldp.org/LDP/lpg/node81.html
-	//--START
-	key_t key;
+int manager(void)
+{
 
-	/* Create unique key via call to ftok() */
-	key = ftok("./test", 'S');
+	int nSockmgr;
+	struct sockaddr_in sinMgraddr, sinMgrcopy, sinWkraddr;
+	socklen_t nsinLen;
+	socklen_t nsinSize;
+	int nPort = 0;
+	int i;
+	
+	// print state.
+	printf("projb manager: num_nodes: %d, nonce: %d\n", nClient, nNonce);
+	
 
-	if ((shmid = shmget(key, SEGSIZE, IPC_CREAT | 0666)) < 0) {
-		perror("shmget");
-		exit(1);
+	// Create socket
+	if ((nSockmgr = socket(AF_INET, SOCK_STREAM, 0)) == -1){
+		errexit("manager create socket.\n");
 	}
 
-	/* Attach (map) the shared memory segment into the current process */
-	if ((segptr = (char *) shmat(shmid, NULL, 0)) == (char *) -1) {
-		perror("shmat");
-		exit(1);
+	// initiate address
+	sinMgraddr.sin_family = AF_INET;
+	sinMgraddr.sin_port = htons(0);  //make random port number
+	sinMgraddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	bzero(&(sinMgraddr.sin_zero), 8);
+
+	// bind
+	nsinLen = sizeof(struct sockaddr_in);
+
+	if (bind(nSockmgr, (struct sockaddr *)&sinMgraddr, nsinLen) < 0){
+		errexit("manager bind \n");
+	}
+	
+	//get port number
+	if (getsockname(nSockmgr, (struct sockaddr *)&sinMgrcopy, &nsinLen) < 0){
+		errexit("manager getsockname\n");
+	}
+	
+	//print port number
+	nPort = ntohs(sinMgrcopy.sin_port);
+	printf("projb manager: nPort is %d\n", nPort);
+
+
+
+	// listen
+	if (listen(nSockmgr, nClient) < 0){
+		errexit("manager listen.\n");
 	}
 
-	//--END
 
-	//3. set up TCP server at manager
-	tcp_serv_sock_fd = create_tcp_socket();
-	populate_sockaddr_in(&client_tcp_server, "localhost", 0);
-	if (bind_address(tcp_serv_sock_fd, client_tcp_server) < 0) {
-		perror("Error biding the address to socket. Exiting!!");
-		exit(0);
+	// start running workers
+	/*
+	strcpy(logfilename, "stage1.manager.out");
+	logfileinit(logfilename); // create the log file
+	snprintf(logfilebuf, sizeof(logfilebuf), "manager port: %d\n", nPort);
+	logfilewriteline(logfilename, logfilebuf, strlen(logfilebuf)); //write log
+	*/
+
+	for (i=0; i<nClient; i++)
+	{
+		if (fork() == 0){
+			// this is the child process
+			close(nSockmgr);
+			client(nPort);
+			exit(0);
+		}
 	}
-
-	//get the port number information
-	socklen_t size = sizeof(tmp);
-	if (getsockname(tcp_serv_sock_fd, (struct sockaddr *) &tmp, &size) < 0) {
-		perror("Error getting port number information!!");
-		exit(0);
+	
+	//i= nClient - 1;
+	
+	// use I/O multiplexing to communicate with clients
+	
+	fd_set readfds;
+	fd_set sockset;
+	struct timeval tv;
+	//int got_sth_to_read = 0;/
+	
+	tv.tv_sec = SELECT_TIMEOUT; 
+	tv.tv_usec = 0;
+	
+	sockMax = nSockmgr;
+	FD_ZERO(&sockset);
+	FD_SET(nSockmgr, &sockset);
+	
+	
+	char	szNonce[16];
+	char	szSendbuf[256];
+	char	szRecvbuf[128];
+	int	nBytestosend;
+	int 	nRecvbytes;
+	int 	nRecvbufsize = sizeof(szRecvbuf);
+	
+	// record worker counter
+	//int	workercnt[FD_SETSIZE];
+	//int	nWrkcnt = 1;
+	
+	// preparing nonce buffer, benefits every connection
+	if (nNonce >= 0){
+		snprintf(szNonce, sizeof(szNonce), "%d", nNonce);
 	}
-
-	//listen for incomming connections
-	listen(tcp_serv_sock_fd, BACKLOG_QUEUE);
-
-	//5. Put manager's port # in shared memory so that child processes and use it to connect the manager (server) socket
-	//writeshm(segptr, temp);
-	sprintf(segptr, "%u", ntohs(tmp.sin_port));
-	printf("init_process: data set in shared memory is: %s\n", segptr);
-}
-
-/**
- * This function calculate the sum of the values of the characters of the first
- * token. This value is used by the switch case to identify the correct case
- */
-int sum(char *str) {
-	int sum = 0, i = 0;
-	while (str[i] != '\0') {
-		sum += str[i];
-		i++;
-	}
-	return sum;
-}
-
-/**
- * This function handles the TCP communication with the clients
- * @stage: stage of the project
- * @nonce : nonce read from the input file
- * @client: client name
- * @port_no: "0" or port number of the first client
- * @second_name: same as client_name for first client else first client's client_name for other nodes
- */
-int handle_client(int i, int stage, long nonce, char* client_name,
-		char* port_no, char* second_name) {
-	char temp[MAXSIZE];
-	int client_sock_fd;
-	long mod_nonce = 0;
-	socklen_t tcp_client_addr_len = sizeof(tcp_client);
-
-	printf("handle_client:: waiting for connection!!\n");
-	client_sock_fd = accept(tcp_serv_sock_fd, (struct sockaddr *) &tcp_client,
-			&tcp_client_addr_len);
-	if (client_sock_fd < 0)
-		perror("ERROR on accept");
-
-	//6. Do data transfer and log it in the log file.
-	fprintf(out_file_stream, "client %s port: %u\n", client_name,
-			tcp_client.sin_port);
-
-	//prepare the payload for the client with stage,nonce,name,port no, second
-	//name sepearted by '\n'
-	char tmp[15];
-	memset(tmp, 0, sizeof(tmp));
-	memset(temp, 0, sizeof(temp));
-
-	sprintf(tmp, "%d", status);
-	strcat(temp, tmp);
-	strcat(temp, "\n");
-
-	memset(tmp, 0, sizeof(tmp));
-	sprintf(tmp, "%d", stage);
-	strcat(temp, tmp);
-	strcat(temp, "\n");
-
-	memset(tmp, 0, sizeof(tmp));
-	sprintf(tmp, "%ld", nonce);
-	strcat(temp, tmp);
-	strcat(temp, "\n");
-
-	strcat(temp, client_name);
-	strcat(temp, "\n");
-
-	strcat(temp, port_no);
-	strcat(temp, "\n");
-
-	strcat(temp, second_name);
-	strcat(temp, "\n");
-	// --END
-
-	if (send(client_sock_fd, temp, sizeof(temp), 0) < 0)
-		perror("Error in sending stage to client");
-
-	printf("handle_client: payload for client is: %s\n", temp);
-
-	//wait to receive reply from the clients
-	memset(temp, 0, sizeof(temp));
-	if (recv(client_sock_fd, temp, sizeof(temp), 0) < 0)
-		perror("Error in receiving data from client");
-
-	printf("handle_client: data received at the server: %s\n", temp);
-
-	//parse the response
-	int pid;
-	sscanf(temp, "%ld %d\n%d", &mod_nonce, &pid, &client1_port_no);
-	printf("handle_client: client1_port_no[%d] received=%d\n", i,
-			client1_port_no);
-	client_udp_ports[i] = client1_port_no;
-
-	//client 1 says: 23504148 24713
-	fprintf(out_file_stream, "client %s says: %ld %d\n", client_name, mod_nonce,
-			pid);
-	fflush(out_file_stream);
-	//close(client_sock_fd);
-	//TODO decide later when to close the client socket
-	return client_sock_fd;
-}
-
-/**
- * This function send commands to the client 1
- */
-void send_command_to_client(int command, char* data) {
-	//create message"
-	char buff[MAXSIZE];
-	memset(buff, 0, sizeof(buff));
-	sprintf(buff, "%d\n%s", command, data);
-	send(client1_tcp_sock_fd, buff, strlen(buff), 0);
-	if (recv(client1_tcp_sock_fd, buff, sizeof(buff), 0) < 0)
-		perror("Error in receiving data from client");
-	switch (command) {
-	case 557:
-		printf("send_command_to_client: store response received\n");
-		break;
-	case 630:
-		printf("send_command_to_client: search response received\n");
-		break;
-	}
-	//TODO something with the response from the client 1
-}
-
-/**
- * This function reads the input file and perform operation as per the
- * instruction given on each line.
- */
-void read_input_file(char *filename) {
-	int child, i = 0;
-	char buff[MAXSIZE], first[15], second[80], port_no[6], second_name[80];
-	memset(buff, 0, sizeof(buff));
-	memset(first, 0, sizeof(first));
-	memset(second, 0, sizeof(second));
-
-	//open file
-	FILE* fp = open_file(filename, "r");
-	if (fp == NULL) {
-		perror("Error opening the file. Exiting!!");
-		exit(0);
-	}
-
-	while (read_line(fp, buff, sizeof(buff))) {
-		//printf("Data read from file Line #%d: %s\n", i, buff);
-		if (buff[0] == '#')
-			continue;
-
-		//parse each line and perform appropriate operation
-		sscanf(buff, "%s %s", first, second);
-		/*
-		 * Key for switch case:
-		 * if sum(first)== 532	=> stage
-		 * if sum(first)== 531	=> nonce
-		 * if sum(first)== 1292	=> start_client
-		 * if sum(first)== 557	=> store
-		 * if sum(first)== 630	=> search
-		 */
-		switch (status = sum(first)) {
-		case 532:
-			stage = atoi(second);
-			memset(output_filename, 0, sizeof(output_filename));
-			sprintf(output_filename, "stage%d.manager.out", stage);
-			//open file in output stream
-			out_file_stream = open_file(output_filename, "w");
-			fprintf(out_file_stream, "manager port: %u\n", ntohs(tmp.sin_port));
-			fflush(out_file_stream);
-			break;
-		case 531:
-			nonce = atol(second);
-			break;
-		case 1292:
-			printf("read_input_file: start_client %s\n", second);
-			if ((child = fork()) == 0) {
-				do_client();
-				exit(0);
-			} else {
-				//non-blocking wait
-				waitpid(child, 0, WNOHANG);
-				if (i == 0) {
-					sprintf(port_no, "%d", 0);
-					memcpy(second_name, second, sizeof(second));
-					memcpy(client1_name, second, sizeof(second));
-				} else {
-					sprintf(port_no, "%d", client_udp_ports[0]);
-					memcpy(second_name, client1_name, sizeof(client1_name));
-				}
-				int sock_fd = handle_client(i, stage, nonce, second, port_no,
-						second_name);
-				if (i == 0) {
-					client1_tcp_sock_fd = sock_fd;
-				}
-				i++;
-			}
-			break;
-		case 557:
-			/*if(stage>3)
-			 sleep(1);*/
-			printf("read_input_file: store %s\n", second);
-			send_command_to_client(557, second);
-			break;
-		case 630:
-			if (stage > 3)
-				sleep(1);
-			printf("read_input_file: search %s\n", second);
-			send_command_to_client(630, second);
+	
+	pCName pcnPos = CNameHead;  // current pos in client list, for client creation
+	int nCltcreated = 0;
+	
+	
+	// first select round, for client creation.
+	// this big while loop just sets up all the client connections.
+	while(1){
+		if(nCltcreated == nClient){
 			break;
 		}
+		
+		readfds = sockset;
+		
+		if (select(sockMax+1, &readfds, NULL, NULL, &tv) == -1) {
+			errexit("manager select.\n");
+		}
+		
+		for(i = 0; i <= sockMax; i++) {
+			if (FD_ISSET(i, &readfds)){
+				if (i == nSockmgr){		// new connection
+					int newsock;
+					nsinSize = sizeof(sinWkraddr); // for accept
+					
+					if ((newsock = accept(nSockmgr, (struct sockaddr *)&sinWkraddr, &nsinSize)) == -1){
+						printf("projb manager: accept error!\n");
+					}else{			// new connection, send nounce
+						// send nonce and name and name and port
+						if (pcnPos == CNameHead){    // first client
+							snprintf(szSendbuf, sizeof(szSendbuf), "%s\n%s\n%d\n%s\n", szNonce, CNameHead->namestr, 0, CNameHead->namestr);
+						}else{		//not the first client
+							snprintf(szSendbuf, sizeof(szSendbuf), "%s\n%s\n%d\n%s\n", szNonce, pcnPos->namestr, CNameHead->udpport, CNameHead->namestr);
+						}
+						nBytestosend = strlen(szSendbuf);
+						if (SendStreamData(newsock, szSendbuf, nBytestosend) < 0){
+							printf("projb manager error: send nonce name etc error! Close socket!\n");
+							close(newsock);
+							continue;
+						}
+						
+						// recv modified nonce and port number
+						if ((nRecvbytes = RecvStreamLineForSelect(newsock, szRecvbuf, nRecvbufsize)) < 0){
+							printf("projb manager error: receive client message error! Close socket!\n");
+							close(newsock);
+							continue;
+						}// seems we don't need modified nonce, ignore it.
+						
+						szRecvbuf[nRecvbytes-1] = '\0';
+						printf("projb manager: recv from client, %s\n", szRecvbuf);
+						// get port number
+						if ((nRecvbytes = RecvStreamLineForSelect(newsock, szRecvbuf, nRecvbufsize)) < 0){
+							printf("projb manager error: receive client message error! Close socket!\n");
+							close(newsock);
+							continue;
+						}else if (nRecvbytes == 0){ // should not happen
+							printf("projb manager error: receive client message error! Close socket!\n");
+							close(newsock);
+							continue;
+						}else{
+							szRecvbuf[nRecvbytes]='\0'; 
+							pcnPos->udpport = (unsigned short)atoi(szRecvbuf);
+						}
+						
+						printf("manager: received client %s port %d\n", pcnPos->namestr, pcnPos->udpport);
+						
+						//workercnt[newsock] = nWrkcnt;
+						//nWrkcnt++;
+						
+						// add socket to set
+						FD_SET(newsock, &sockset);
+						if (newsock > sockMax) {	// reset the maximum socket
+							sockMax = newsock;
+						}
+						
+						// store the UDP port and TCP sock.
+						pcnPos->tcpsock = newsock;
+						pcnPos = pcnPos->next;
+						nCltcreated++;
+					}
+				}else{				// client socket. no actioin in this select loop
+					
+				}
+			}
+		}
+	}
+	
+	int nJobleft = nMgrjob;
+	printf("projb manager: nJohleft = %d\n", nJobleft);
+	// Start store and other command, send the first store command
+	if (nMgrjob != 0){
+		pSText pstPos;
+		pstPos = STextHead;
+		
+		snprintf(szSendbuf, sizeof(szSendbuf), "store\n%s\n", STextHead->txt);
+		nBytestosend = strlen(szSendbuf);
+		if(SendStreamData(CNameHead->tcpsock, szSendbuf, nBytestosend) < 0){
+			printf("manager: send first store error!\n");
+		}
+		printf("manager: send one store job: %s\n", pstPos->txt);
+		pstPos = pstPos->next;
+		
+		pmgrjob curjob = MgrjobHead->next;  // skip the first one
+		pSearchT psrchPos = SearchTHead;
+		pEndClnt pendclPos = EndClntHead;
+		
+		int nExit = 0;
+		while(nJobleft){
+			
+			if (nExit==1)
+				break;
+						
+			readfds = sockset;
+			
+			if (select(sockMax+1, &readfds, NULL, NULL, &tv) == -1) {
+				errexit("manager select.\n");
+			}
+			
+			for(i = 0; i <= sockMax; i++) {
+				if (FD_ISSET(i, &readfds)){
+					if (i == nSockmgr){   // not possible
+						printf("projb manager: listen socket got an unexpected connection, ignore!\n");
+					}else if(i == CNameHead->tcpsock){  // possibly first node finishes its job, good!
+						// but check first
+						if ((nRecvbytes = RecvStreamLineForSelect(i, szRecvbuf, nRecvbufsize)) < 0){
+							errexit("projb manager error: receive first client message error!\n");
+						}else if(nRecvbytes == 0){
+							nExit = 1;
+							break;
+						}
+						
+						szRecvbuf[nRecvbytes-1] = '\0';
+						if (strcmp(szRecvbuf, "ok") != 0){
+							printf("projb manager exceptioin: recv unknown reply form first node: %s\n", szRecvbuf);
+							nExit = 1;
+							break;
+						}
+						
+						nJobleft--;
+						if (nJobleft == 0){
+							break;
+						}
+						
+						// assign next job
+						if (curjob->jobtype == STRJOB){    // store
+							snprintf(szSendbuf, sizeof(szSendbuf), "store\n%s\n", pstPos->txt);
+							nBytestosend = strlen(szSendbuf);
+							if(SendStreamData(CNameHead->tcpsock, szSendbuf, nBytestosend) < 0){
+								printf("manager: send store error\n");
+							}
+							printf("manager: send one store job: %s\n", pstPos->txt);
+							pstPos = pstPos->next;
+						}else if(curjob->jobtype == SCHJOB){   // search
+							
+							snprintf(szSendbuf, sizeof(szSendbuf), "search\n%s\n", psrchPos->txt);
+							nBytestosend = strlen(szSendbuf);
+							if(SendStreamData(CNameHead->tcpsock, szSendbuf, nBytestosend) < 0){
+								printf("manager: send search error\n");
+							}
+							printf("manager: send one search job: %s\n", psrchPos->txt);
+							psrchPos = psrchPos->next;
+						}else if(curjob->jobtype == ENDJOB){   // end_client
+							// first find the client sock
+							//pendclPos
+							pCName tempcn = CNameHead;
 
-		memset(first, 0, sizeof(first));
-		memset(second, 0, sizeof(second));
+							int k;
+							for(k=0; k<nClient; k++){
+								if (strcmp(tempcn->namestr, pendclPos->namestr) == 0)
+									break;
+
+								tempcn = tempcn->next;
+							}
+							if (tempcn == NULL){
+								printf("manager: error, node to end is not one of the ring\n");
+								nExit = 1;
+								break;
+							}
+							snprintf(szSendbuf, sizeof(szSendbuf), "end_client\n%s\n", pendclPos->namestr);
+							nBytestosend = strlen(szSendbuf);
+							if(SendStreamData(tempcn->tcpsock, szSendbuf, nBytestosend) < 0){
+								printf("manager: send end_client error\n");
+							}
+							printf("manager: send one end_client job: %s\n", pendclPos->namestr);
+
+							pendclPos = pendclPos->next;
+							
+						}
+						
+						curjob = curjob->next;
+						
+					}else{ // end client
+						if ((nRecvbytes = RecvStreamLineForSelect(i, szRecvbuf, nRecvbufsize)) < 0){
+							errexit("projb manager error: receive first client message error!\n");
+						}else if(nRecvbytes == 0){
+							nExit = 1;
+							break;
+						}
+						
+						szRecvbuf[nRecvbytes-1] = '\0';
+						if (strcmp(szRecvbuf, "ok") != 0){
+							printf("projb manager exceptioin: recv unknown reply form first node: %s\n", szRecvbuf);
+							nExit = 1;
+							break;
+						}
+						nJobleft--;
+						if (nJobleft == 0){
+							break;
+						}
+
+						// assign next job
+						if (curjob->jobtype == STRJOB){    // store
+							snprintf(szSendbuf, sizeof(szSendbuf), "store\n%s\n", pstPos->txt);
+							nBytestosend = strlen(szSendbuf);
+							if(SendStreamData(CNameHead->tcpsock, szSendbuf, nBytestosend) < 0){
+								printf("manager: send store error\n");
+							}
+							printf("manager: send one store job: %s\n", pstPos->txt);
+							pstPos = pstPos->next;
+						}else if(curjob->jobtype == SCHJOB){   // search
+							
+							snprintf(szSendbuf, sizeof(szSendbuf), "search\n%s\n", psrchPos->txt);
+							nBytestosend = strlen(szSendbuf);
+							if(SendStreamData(CNameHead->tcpsock, szSendbuf, nBytestosend) < 0){
+								printf("manager: send search error\n");
+							}
+							printf("manager: send one search job: %s\n", psrchPos->txt);
+							psrchPos = psrchPos->next;
+						}else if(curjob->jobtype == ENDJOB){   // end_client
+							// first find the client sock
+							//pendclPos
+							pCName tempcn = CNameHead;
+
+							int k;
+							for(k=0; k<nClient; k++){
+								if (strcmp(tempcn->namestr, pendclPos->namestr) == 0)
+									break;
+
+								tempcn = tempcn->next;
+							}
+							if (tempcn == NULL){
+								printf("manager: error, node to end is not one of the ring\n");
+								nExit = 1;
+								break;
+							}
+							snprintf(szSendbuf, sizeof(szSendbuf), "end_client\n%s\n", pendclPos->namestr);
+							nBytestosend = strlen(szSendbuf);
+							if(SendStreamData(tempcn->tcpsock, szSendbuf, nBytestosend) < 0){
+								printf("manager: send end_client error\n");
+							}
+							printf("manager: send one end_client job: %s\n", pendclPos->namestr);
+
+							pendclPos = pendclPos->next;
+							
+						}
+						
+						curjob = curjob->next;
+					}
+				}
+			}
+			
+			if (nJobleft == 0)
+				break;
+		}
 	}
 
-	//TODO incoroprate some check on the input parameters defined in the file
-	/*if(!(a[0]&&a[1]&&a[2])){
-	 printf("Malformed input parameter file. Exiting!!\n");
-	 exit(0);
-	 }*/
-
-	//close the file stream
-	close_file(fp);
-}
-
-void writeshm(char *segptr, char *text) {
-	strcpy(segptr, text);
-//printf("Done...\n");
-}
-
-void destroy_process() {
-	//removing shared memory area
-	shmctl(shmid, IPC_RMID, 0);
-
-	//close server socket before exiting the application
-	close(tcp_serv_sock_fd);
-}
-
-int main(int argc, char *argv[]) {
-	//check for correct usage
-	if (argc < 2) {
-		printf("The correct usage is ./proja <filename>\n");
-		perror("Incorrect usage of program!! exiting!!\n");
-		return -1;
+	// ask cliens to exit;
+	snprintf(szSendbuf, sizeof(szSendbuf), "exit!\n");
+	nBytestosend = strlen(szSendbuf);
+	pcnPos = CNameHead;
+	for (i=0; i<nClient; i++){
+		if(SendStreamData(pcnPos->tcpsock, szSendbuf, nBytestosend) < 0){
+			printf("manager: send exit error, client %s\n", pcnPos->namestr);
+		}
+		close(pcnPos->tcpsock);
+	//	printf("manager close: %s with sock %d\n", pcnPos->namestr, pcnPos->tcpsock);
+		pcnPos = pcnPos->next;
 	}
-
-	init_process();
-
-	char *filename = argv[1];
-
-	//1. read the input parameter file
-	read_input_file(filename);
-	sleep(2);//to see if that helps the last client being stuck at infinite loop
-
-	destroy_process();
+	close(nSockmgr);
 	return 0;
 }
+
