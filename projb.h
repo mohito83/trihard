@@ -85,9 +85,18 @@ extern pEndClnt EndClntHead;
 extern pEndClnt EndClntTail;
 extern int nEndClnt;
 
+typedef struct KillClntNode{
+	char namestr[MAX_CLIENT_NAME_SIZE];
+	struct KillClntNode *next;
+}KILLCLNT, *pKillClnt;
+extern pEndClnt KillClntHead;
+extern pEndClnt KillClntTail;
+extern int nKillClnt;
+
 #define STRJOB 1   // store
 #define SCHJOB 2   // search
 #define ENDJOB 3   // end_client
+#define KILLJOB 4	//kill_client
 
 void errexit(char *msg);
 void AddClientNameNode(char *name);
@@ -95,4 +104,5 @@ void AddStoreTextNode(char *text);
 void AddSearchTextNode(char *str);
 void AddMgrJobNode(int job);
 void AddEndClntNode(char *str);
+void AddKillClntNode(char *str);
 #endif

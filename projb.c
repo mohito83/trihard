@@ -20,12 +20,10 @@
  *
  */
 
-
 // File name: 	projb.c
 // Author: 		Xun Fan (xunfan@usc.edu)
 // Date: 		2011.8
 // Description: CSCI551 fall 2011 project b, main module source file.
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -57,135 +55,137 @@ pEndClnt EndClntHead = NULL;
 pEndClnt EndClntTail = NULL;
 int nEndClnt = 0;
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
 	char *usage = "Usage: projb [configuration file]\n";
-	char sClientname[MAX_CLIENT_NAME_SIZE] = {0};
-	char sText[MAX_STORE_TEXT_SIZE] = {0};
- 	char sKeyword[64] = {0};
+	char sClientname[MAX_CLIENT_NAME_SIZE] = { 0 };
+	char sText[MAX_STORE_TEXT_SIZE] = { 0 };
+	char sKeyword[64] = { 0 };
 
 	//check arguments
-	if (argc == 1)
-	{
+	if (argc == 1) {
 		printf("no configuration file!\n\n%s", usage);
 		exit(1);
-	}
-	else if(argc != 2){
+	} else if (argc != 2) {
 		printf("%s", usage);
 		exit(1);
 	}
 
 	FILE *fp;
-	char confile_buf[CONFIG_FILE_BUF_SIZE] = {0};
-	char cFilename[FILE_NAME_SIZE] = {0};
-	
+	char confile_buf[CONFIG_FILE_BUF_SIZE] = { 0 };
+	char cFilename[FILE_NAME_SIZE] = { 0 };
+
 	// get configuration file path
-	if (argv[1][0] != '/'){    // relative path
+	if (argv[1][0] != '/') {    // relative path
 		snprintf(cFilename, sizeof(cFilename), "./%s", argv[1]);
-	}else{							// absolute path
-		if (strlen(argv[1]) > FILE_NAME_SIZE ){
+	} else {							// absolute path
+		if (strlen(argv[1]) > FILE_NAME_SIZE) {
 			errexit("input path too long.\n");
 		}
 		strncpy(cFilename, argv[1], FILE_NAME_SIZE);
 	}
-	
-	
+
 	// Open configuration file
-	if ((fp = fopen(cFilename, "r")) == NULL)
-	{
+	if ((fp = fopen(cFilename, "r")) == NULL) {
 		printf("open configuration file error. %s\n", cFilename);
 	}
 
 	//read config file
-	while (!feof(fp))
-	{
+	while (!feof(fp)) {
 		// read line
 		memset(confile_buf, 0, sizeof(confile_buf));
-		fgets(confile_buf, CONFIG_FILE_BUF_SIZE,fp);
+		fgets(confile_buf, CONFIG_FILE_BUF_SIZE, fp);
 
 		if (confile_buf[0] == '#') //comment line
 			continue;
-		
+
 		if (strlen(confile_buf) == 0)
 			continue;
-		
+
 		if (sscanf(confile_buf, "%s", sKeyword) != 1)
 			continue;
-		
-		if (strcmp(sKeyword, "stage") == 0){
+
+		if (strcmp(sKeyword, "stage") == 0) {
 			if (sscanf(confile_buf, "%s %d", sKeyword, &nStage) != 2)
 				errexit("config file wrong stage statement.\n");
 		}
-		
-		if (strcmp(sKeyword, "nonce") == 0){
+
+		if (strcmp(sKeyword, "nonce") == 0) {
 			if (sscanf(confile_buf, "%s %d", sKeyword, &nNonce) != 2)
 				errexit("config file wrong nonce statement.\n");
 		}
-		
-		if (strcmp(sKeyword, "start_client") == 0){
+
+		if (strcmp(sKeyword, "start_client") == 0) {
 			if (sscanf(confile_buf, "%s %s", sKeyword, sClientname) != 2)
 				errexit("config file wrong start_client statement.\n");
-			
+
 			// add client name to list
 			AddClientNameNode(sClientname);
 		}
-		
-		if (strcmp(sKeyword, "store") == 0){
+
+		if (strcmp(sKeyword, "store") == 0) {
 			if (sscanf(confile_buf, "%s %s", sKeyword, sText) != 2)
 				errexit("config file wrong store statement.\n");
-			
+
 			// add client name to list
 			AddStoreTextNode(sText);
 			AddMgrJobNode(STRJOB);
 		}
-		
-		if (strcmp(sKeyword, "search") == 0){
+
+		if (strcmp(sKeyword, "search") == 0) {
 			if (sscanf(confile_buf, "%s %s", sKeyword, sText) != 2)
 				errexit("config file wrong store statement.\n");
-			
+
 			// add client name to list
 			AddSearchTextNode(sText);
 			AddMgrJobNode(SCHJOB);
 		}
 
-		if (strcmp(sKeyword, "end_client") == 0){
+		if (strcmp(sKeyword, "end_client") == 0) {
 			if (sscanf(confile_buf, "%s %s", sKeyword, sText) != 2)
 				errexit("config file wrong store statement.\n");
-			
+
 			// add client name to list
 			AddEndClntNode(sText);
+			AddMgrJobNode(ENDJOB);
+		}
+
+		if (strcmp(sKeyword, "kill_client") == 0) {
+			if (sscanf(confile_buf, "%s %s", sKeyword, sText) != 2)
+				errexit("config file wrong store statement.\n");
+
+			// add client name to list
+			AddKillClntNode(sText);
 			AddMgrJobNode(ENDJOB);
 		}
 	}
 
 	// Check if configuration parameter read successfully
 	// projb only accept stage 2, 3, 4, 5
-	if (nClient <= 0 || nNonce < 0 || nStage < 2 || nStage > 5){
+	if (nClient <= 0 || nNonce < 0 || nStage < 2 || nStage > 5) {
 		errexit("configuration file parameters wrong!\n");
 	}
 
 	//start task
-	
-	if (manager() < 0){
+
+	if (manager() < 0) {
 		return -1;
 	}
 
 	return 0;
 }
 
-void errexit(char *msg)
-{
-       printf("projb error: %s", msg);
-       exit(1);
+void errexit(char *msg) {
+	printf("projb error: %s", msg);
+	exit(1);
 }
 
-void AddClientNameNode(char *name){
-	
-	if (CNameHead == NULL){ // first node
-		CNameHead = (pCName)malloc(sizeof(CNAME));
+void AddClientNameNode(char *name) {
+
+	if (CNameHead == NULL) { // first node
+		CNameHead = (pCName) malloc(sizeof(CNAME));
 		if (CNameHead == NULL)
 			errexit("malloc fail!\n");
-			
+
 		strncpy(CNameHead->namestr, name, MAX_CLIENT_NAME_SIZE);
 		CNameHead->next = NULL;
 		CNameTail = CNameHead;
@@ -193,10 +193,10 @@ void AddClientNameNode(char *name){
 		//printf("add client name: %s\n", CNameHead->namestr);
 		nClient = 1; //update number of clients to 1
 	} else {
-		pCName newClient = (pCName)malloc(sizeof(CNAME));
+		pCName newClient = (pCName) malloc(sizeof(CNAME));
 		if (newClient == NULL)
 			errexit("malloc fail!\n");
-			
+
 		strncpy(newClient->namestr, name, MAX_CLIENT_NAME_SIZE);
 		newClient->next = NULL;
 		CNameTail->next = newClient;
@@ -206,105 +206,131 @@ void AddClientNameNode(char *name){
 	}
 }
 
-void AddStoreTextNode(char *text){
-	
-	if (STextHead == NULL){ // first node
-		STextHead = (pSText)malloc(sizeof(STEXT));
+void AddStoreTextNode(char *text) {
+
+	if (STextHead == NULL) { // first node
+		STextHead = (pSText) malloc(sizeof(STEXT));
 		if (STextHead == NULL)
 			errexit("malloc fail!\n");
-			
+
 		strncpy(STextHead->txt, text, MAX_STORE_TEXT_SIZE);
 		STextHead->next = NULL;
 		STextTail = STextHead;
 		nSText = 1;
 	} else {
-		pSText newText = (pSText)malloc(sizeof(STEXT));
+		pSText newText = (pSText) malloc(sizeof(STEXT));
 		if (newText == NULL)
 			errexit("malloc fail!\n");
-			
+
 		strncpy(newText->txt, text, MAX_STORE_TEXT_SIZE);
 		newText->next = NULL;
 		STextTail->next = newText;
 		STextTail = newText;
-		
+
 		nSText++;
 	}
 }
 
-void AddSearchTextNode(char *str){
-	
-	if (SearchTHead == NULL){ // first node
-		SearchTHead = (pSearchT)malloc(sizeof(SEARCHT));
+void AddSearchTextNode(char *str) {
+
+	if (SearchTHead == NULL) { // first node
+		SearchTHead = (pSearchT) malloc(sizeof(SEARCHT));
 		if (SearchTHead == NULL)
 			errexit("malloc fail!\n");
-			
+
 		strncpy(SearchTHead->txt, str, MAX_STORE_TEXT_SIZE);
 		SearchTHead->next = NULL;
 		SearchTTail = SearchTHead;
 		nSearchT = 1;
 	} else {
-		pSearchT newSearch = (pSearchT)malloc(sizeof(SEARCHT));
+		pSearchT newSearch = (pSearchT) malloc(sizeof(SEARCHT));
 		if (newSearch == NULL)
 			errexit("malloc fail!\n");
-			
+
 		strncpy(newSearch->txt, str, MAX_STORE_TEXT_SIZE);
 		newSearch->next = NULL;
 		SearchTTail->next = newSearch;
 		SearchTTail = newSearch;
-		
+
 		nSearchT++;
 	}
-	
+
 }
 
-void AddEndClntNode(char *str){
+void AddEndClntNode(char *str) {
 	pEndClnt temp;
-	
-	if (EndClntHead == NULL){ // first node
-		EndClntHead = (pEndClnt)malloc(sizeof(ENDCLNT));
+
+	if (EndClntHead == NULL) { // first node
+		EndClntHead = (pEndClnt) malloc(sizeof(ENDCLNT));
 		if (EndClntHead == NULL)
 			errexit("malloc fail!\n");
-			
+
 		strncpy(EndClntHead->namestr, str, MAX_CLIENT_NAME_SIZE);
 		EndClntHead->next = NULL;
 		EndClntTail = EndClntHead;
 		nEndClnt = 1;
 	} else {
-		temp = (pEndClnt)malloc(sizeof(ENDCLNT));
+		temp = (pEndClnt) malloc(sizeof(ENDCLNT));
 		if (temp == NULL)
 			errexit("malloc fail!\n");
-			
+
 		strncpy(temp->namestr, str, MAX_CLIENT_NAME_SIZE);
 		temp->next = NULL;
 		EndClntTail->next = temp;
 		EndClntTail = temp;
-		
+
 		nEndClnt++;
 	}
-	
+
 }
 
-
-void AddMgrJobNode(int job){
+void AddMgrJobNode(int job) {
 	pmgrjob temp;
-	if (MgrjobHead == NULL){
-		MgrjobHead = (pmgrjob)malloc(sizeof(MGRJOB));
+	if (MgrjobHead == NULL) {
+		MgrjobHead = (pmgrjob) malloc(sizeof(MGRJOB));
 		if (MgrjobHead == NULL)
 			errexit("malloc fail!\n");
-		
+
 		MgrjobHead->jobtype = job;
 		MgrjobHead->next = NULL;
 		MgrjobTail = MgrjobHead;
 		nMgrjob = 1;
-	}else{
-		temp = (pmgrjob)malloc(sizeof(MGRJOB));
+	} else {
+		temp = (pmgrjob) malloc(sizeof(MGRJOB));
 		if (temp == NULL)
 			errexit("malloc fail!\n");
-		
+
 		temp->jobtype = job;
 		temp->next = NULL;
 		MgrjobTail->next = temp;
 		MgrjobTail = temp;
 		nMgrjob++;
 	}
+}
+
+void AddKillClntNode(char *str) {
+	pKillClnt temp;
+
+	if (KillClntHead == NULL) { // first node
+		KillClntHead = (pKillClnt) malloc(sizeof(KILLCLNT));
+		if (KillClntHead == NULL)
+			errexit("malloc fail!\n");
+
+		strncpy(KillClntHead->namestr, str, MAX_CLIENT_NAME_SIZE);
+		KillClntHead->next = NULL;
+		KillClntTail = KillClntHead;
+		nKillClnt = 1;
+	} else {
+		temp = (pKillClnt) malloc(sizeof(KILLCLNT));
+		if (temp == NULL)
+			errexit("malloc fail!\n");
+
+		strncpy(temp->namestr, str, MAX_CLIENT_NAME_SIZE);
+		temp->next = NULL;
+		KillClntTail->next = temp;
+		KillClntTail = temp;
+
+		nKillClnt++;
+	}
+
 }
