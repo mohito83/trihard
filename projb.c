@@ -53,7 +53,12 @@ int nMgrjob = 0;
 
 pEndClnt EndClntHead = NULL;
 pEndClnt EndClntTail = NULL;
+
+pKillClnt KillClntHead = NULL;
+pKillClnt KillClntTail = NULL;
+
 int nEndClnt = 0;
+int nKillClnt = 0;
 
 int main(int argc, char *argv[]) {
 	char *usage = "Usage: projb [configuration file]\n";

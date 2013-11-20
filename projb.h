@@ -89,8 +89,8 @@ typedef struct KillClntNode{
 	char namestr[MAX_CLIENT_NAME_SIZE];
 	struct KillClntNode *next;
 }KILLCLNT, *pKillClnt;
-extern pEndClnt KillClntHead;
-extern pEndClnt KillClntTail;
+extern pKillClnt KillClntHead;
+extern pKillClnt KillClntTail;
 extern int nKillClnt;
 
 #define STRJOB 1   // store

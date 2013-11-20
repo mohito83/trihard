@@ -768,7 +768,7 @@ int FindNeighbor(int sock, int msgtype, TNode na, TNode *pnb) {
 	// to be simple, just assume sendto always send all data required.
 	if ((nSendbytes = sendto(sock, sendbuf, sizeof(NGQM), 0,
 			(struct sockaddr *) &naaddr, sizeof(naaddr))) != sizeof(NGQM)) {
-		printf("projb error: find_neighbor sendto ret %d, should send %lu\n",
+		printf("projb error: find_neighbor sendto ret %d, should send %u\n",
 				nSendbytes, sizeof(NGQM));
 		return -1;
 	}
@@ -784,7 +784,7 @@ int FindNeighbor(int sock, int msgtype, TNode na, TNode *pnb) {
 	 **********************************************************************/
 	if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(NGRM), 0, NULL, NULL))
 			!= sizeof(NGRM)) {
-		printf("projb error: find_neighbor recvfrom ret %d, should recv %lu\n",
+		printf("projb error: find_neighbor recvfrom ret %d, should recv %u\n",
 				nRecvbytes, sizeof(NGRM));
 		return -1;
 	}
@@ -906,7 +906,7 @@ int UpdateNeighbor(int sock, TNode *chgpreNode, TNode *chgsucNode) {
 
 	if ((nSendbytes = sendto(sock, sendbuf, sizeof(UPQM), 0,
 			(struct sockaddr *) &naaddr, sizeof(naaddr))) != sizeof(UPQM)) {
-		printf("projb error: update_neighbor sendto ret %d, should send %lu\n",
+		printf("projb error: update_neighbor sendto ret %d, should send %u\n",
 				nSendbytes, sizeof(UPQM));
 		return -1;
 	}
@@ -923,7 +923,7 @@ int UpdateNeighbor(int sock, TNode *chgpreNode, TNode *chgsucNode) {
 		if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(UPRM), 0, NULL, NULL))
 				!= sizeof(UPRM)) {
 			printf(
-					"projb error: update_neighbor recvfrom ret %d, should recv %lu\n",
+					"projb error: update_neighbor recvfrom ret %d, should recv %u\n",
 					nRecvbytes, sizeof(UPRM));
 			return -1;
 		}
@@ -940,7 +940,7 @@ int UpdateNeighbor(int sock, TNode *chgpreNode, TNode *chgsucNode) {
 
 	if ((nSendbytes = sendto(sock, sendbuf, sizeof(UPQM), 0,
 			(struct sockaddr *) &naaddr, sizeof(naaddr))) != sizeof(UPQM)) {
-		printf("projb error: update_neighbor sendto ret %d, should send %lu\n",
+		printf("projb error: update_neighbor sendto ret %d, should send %u\n",
 				nSendbytes, sizeof(UPQM));
 		return -1;
 	}
@@ -956,7 +956,7 @@ int UpdateNeighbor(int sock, TNode *chgpreNode, TNode *chgsucNode) {
 		if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(UPRM), 0, NULL, NULL))
 				!= sizeof(UPRM)) {
 			printf(
-					"projb error: update_neighbor recvfrom ret %d, should recv %lu\n",
+					"projb error: update_neighbor recvfrom ret %d, should recv %u\n",
 					nRecvbytes, sizeof(UPRM));
 			return -1;
 		}
@@ -988,7 +988,7 @@ int UpdateFingerTable(int sock, TNode tn, TNode sn, int idx) {
 	if ((nSendbytes = sendto(sock, sendbuf, sizeof(UPQM), 0,
 			(struct sockaddr *) &naaddr, sizeof(naaddr))) != sizeof(UPQM)) {
 		printf(
-				"projb error: UpdateFingerTable sendto ret %d, should send %lu\n",
+				"projb error: UpdateFingerTable sendto ret %d, should send %u\n",
 				nSendbytes, sizeof(UPQM));
 		return -1;
 	}
@@ -1003,7 +1003,7 @@ int UpdateFingerTable(int sock, TNode tn, TNode sn, int idx) {
 	if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(UPRM), 0, NULL, NULL))
 			!= sizeof(UPRM)) {
 		printf(
-				"projb error: UpdateFingerTable recvfrom ret %d, should recv %lu\n",
+				"projb error: UpdateFingerTable recvfrom ret %d, should recv %u\n",
 				nRecvbytes, sizeof(UPRM));
 		return -1;
 	}
@@ -1085,7 +1085,7 @@ int HandleUdpMessage(int sock) {
 	{
 		if (recvlen != sizeof(NGQM)) {
 			printf(
-					"projb error: clinet %s (%08x %d) recvd successor-q, but length wrong %d, should be %lu\n",
+					"projb error: clinet %s (%08x %d) recvd successor-q, but length wrong %d, should be %u\n",
 					Myname, HashID, MyUDPPort, recvlen, sizeof(NGQM));
 			return -1;
 		}
@@ -1102,7 +1102,7 @@ int HandleUdpMessage(int sock) {
 		if ((sendlen = sendto(sock, sendbuf, sizeof(sucrlp), 0,
 				(struct sockaddr *) &cliaddr, sa_len)) != sizeof(sucrlp)) {
 			printf(
-					"projb error: HandleUdpMessage sendto ret %d, shoulde send %lu\n",
+					"projb error: HandleUdpMessage sendto ret %d, shoulde send %u\n",
 					sendlen, sizeof(sucrlp));
 			return -1;
 		}
@@ -1128,7 +1128,7 @@ int HandleUdpMessage(int sock) {
 		if ((sendlen = sendto(sock, sendbuf, sizeof(prcrlp), 0,
 				(struct sockaddr *) &cliaddr, sa_len)) != sizeof(prcrlp)) {
 			printf(
-					"projb error: HandleUdpMessage sendto ret %d, should send %lu\n",
+					"projb error: HandleUdpMessage sendto ret %d, should send %u\n",
 					sendlen, sizeof(prcrlp));
 			return -1;
 		}
@@ -1170,7 +1170,7 @@ int HandleUdpMessage(int sock) {
 						(struct sockaddr *) &cliaddr, sa_len))
 						!= sizeof(UPRM)) {
 					printf(
-							"projb error: client %s HandleUdpMessage update-r send ret %d, shoulde send %lu\n",
+							"projb error: client %s HandleUdpMessage update-r send ret %d, shoulde send %u\n",
 							Myname, sendlen, sizeof(UPRM));
 					return -1;
 				}
@@ -1196,7 +1196,7 @@ int HandleUdpMessage(int sock) {
 						(struct sockaddr *) &cliaddr, sa_len))
 						!= sizeof(UPRM)) {
 					printf(
-							"projb error: client %s HandleUdpMessage update-r send ret %d, should send %lu\n",
+							"projb error: client %s HandleUdpMessage update-r send ret %d, should send %u\n",
 							Myname, sendlen, sizeof(UPRM));
 					return -1;
 				}
@@ -1230,7 +1230,7 @@ int HandleUdpMessage(int sock) {
 						(struct sockaddr *) &cliaddr, sa_len))
 						!= sizeof(UPRM)) {
 					printf(
-							"projb error: client %s HandleUdpMessage update-r send ret %d, should send %lu\n",
+							"projb error: client %s HandleUdpMessage update-r send ret %d, should send %u\n",
 							Myname, sendlen, sizeof(UPRM));
 					return -1;
 				}
@@ -1335,7 +1335,7 @@ int HandleUdpMessage(int sock) {
 		if ((sendlen = sendto(sock, sendbuf, sizeof(CLRM), 0,
 				(struct sockaddr *) &cliaddr, sa_len)) != sizeof(CLRM)) {
 			printf(
-					"projb error: HandleUdpMessage CLSTR sendto ret %d, shoulde send %lu\n",
+					"projb error: HandleUdpMessage CLSTR sendto ret %d, shoulde send %u\n",
 					sendlen, sizeof(CLRM));
 			return -1;
 		}
@@ -1392,7 +1392,7 @@ int HandleUdpMessage(int sock) {
 				(struct sockaddr *) &cliaddr, sa_len))
 				!= (sizeof(STRM) + strlen(s))) {
 			printf(
-					"projb error: HandleUdpMessage STORR sendto ret %d, should send %lu\n",
+					"projb error: HandleUdpMessage STORR sendto ret %d, should send %u\n",
 					sendlen, (sizeof(STRM) + strlen(s)));
 			return -1;
 		}
@@ -1429,7 +1429,7 @@ int HandleUdpMessage(int sock) {
 						(struct sockaddr *) &cliaddr, sa_len))
 						!= sizeof(NXQM)) {
 					printf(
-							"projb client %s error: HandleUdpMessage NXTDQ sendto ret %d, should send %lu\n",
+							"projb client %s error: HandleUdpMessage NXTDQ sendto ret %d, should send %u\n",
 							Myname, sendlen, sizeof(NXQM));
 					return -1;
 				}
@@ -1477,7 +1477,7 @@ int HandleUdpMessage(int sock) {
 			if ((sendlen = sendto(sock, sendbuf, sizeof(LERM), 0,
 					(struct sockaddr *) &cliaddr, sa_len)) != sizeof(LERM)) {
 				printf(
-						"projb client %s error: HandleUdpMessage NXTDQ sendto ret %d, should send %lu\n",
+						"projb client %s error: HandleUdpMessage NXTDQ sendto ret %d, should send %u\n",
 						Myname, sendlen, sizeof(LERM));
 				return -1;
 			}
@@ -1496,7 +1496,7 @@ int HandleUdpMessage(int sock) {
 			if ((sendlen = sendto(sock, sendbuf, sizeof(NGQM), 0,
 					(struct sockaddr *) &cliaddr, sa_len)) != sizeof(NGQM)) {
 				printf(
-						"projb client %s error: HandleUdpMessage succ-q sendto ret %d, should send %lu\n",
+						"projb client %s error: HandleUdpMessage succ-q sendto ret %d, should send %u\n",
 						Myname, sendlen, sizeof(NGQM));
 				return -1;
 			}
@@ -1508,7 +1508,7 @@ int HandleUdpMessage(int sock) {
 			if ((recvlen = recvfrom(sock, recvbuf, sizeof(NGRM), 0, NULL, NULL))
 					!= sizeof(NGRM)) {
 				printf(
-						"projb error: HandleUdpMessage succ-r recvfrom ret %d, should recv %lu\n",
+						"projb error: HandleUdpMessage succ-r recvfrom ret %d, should recv %u\n",
 						recvlen, sizeof(NGRM));
 				return -1;
 			}
@@ -1534,7 +1534,7 @@ int HandleUdpMessage(int sock) {
 			if ((sendlen = sendto(sock, sendbuf, sizeof(LERM), 0,
 					(struct sockaddr *) &cliaddr, sa_len)) != sizeof(LERM)) {
 				printf(
-						"projb client %s error: HandleUdpMessage NXTDQ sendto ret %d, should send %lu\n",
+						"projb client %s error: HandleUdpMessage NXTDQ sendto ret %d, should send %u\n",
 						Myname, sendlen, sizeof(LERM));
 				return -1;
 			}
@@ -1860,7 +1860,7 @@ int HandleEndClient(int sock) {
 	if ((nSendbytes = sendto(sock, sendbuf, sizeof(LEQM), 0,
 			(struct sockaddr *) &naaddr, sizeof(naaddr))) != sizeof(LEQM)) {
 		printf(
-				"projb %s error: HandleEndClient leaving-q to succ sendto ret %d, should send %lu\n",
+				"projb %s error: HandleEndClient leaving-q to succ sendto ret %d, should send %u\n",
 				Myname, nSendbytes, sizeof(LEQM));
 		return -1;
 	}
@@ -1882,7 +1882,7 @@ int HandleEndClient(int sock) {
 		if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(NXQM), 0, NULL, NULL))
 				!= sizeof(NXQM)) {
 			printf(
-					"projb %s error: HandleEndClient recvfrom ret %d, should recv %lu\n",
+					"projb %s error: HandleEndClient recvfrom ret %d, should recv %u\n",
 					Myname, nRecvbytes, sizeof(NXQM));
 			return -1;
 		}
@@ -1908,7 +1908,7 @@ int HandleEndClient(int sock) {
 					(struct sockaddr *) &naaddr, sizeof(naaddr)))
 					!= sizeof(NXRM)) {
 				printf(
-						"projb %s error: HandleEndClient next-data-r ret %d, should send %lu\n",
+						"projb %s error: HandleEndClient next-data-r ret %d, should send %u\n",
 						Myname, nSendbytes, sizeof(NXRM));
 				return -1;
 			}
@@ -1928,7 +1928,7 @@ int HandleEndClient(int sock) {
 					(struct sockaddr *) &naaddr, sizeof(naaddr)))
 					!= (sizeof(NXRM) + slen)) {
 				printf(
-						"projb %s error: HandleEndClient next-data-r ret %d, should send %lu\n",
+						"projb %s error: HandleEndClient next-data-r ret %d, should send %u\n",
 						Myname, nSendbytes, (sizeof(NXRM) + slen));
 				return -1;
 			}
@@ -1947,7 +1947,7 @@ int HandleEndClient(int sock) {
 	if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(LERM), 0, NULL, NULL))
 			!= sizeof(LERM)) {
 		printf(
-				"projb %s error: HandleEndClient recvfrom ret %d, should recv %lu\n",
+				"projb %s error: HandleEndClient recvfrom ret %d, should recv %u\n",
 				Myname, nRecvbytes, sizeof(LERM));
 		return -1;
 	}
@@ -2000,7 +2000,7 @@ int HandleEndClient(int sock) {
 					(struct sockaddr *) &naaddr, sizeof(naaddr)))
 					!= sizeof(LEQM)) {
 				printf(
-						"projb %s error: HandleEndClient leaving-q to other sendto ret %d, should send %lu\n",
+						"projb %s error: HandleEndClient leaving-q to other sendto ret %d, should send %u\n",
 						Myname, nSendbytes, sizeof(LEQM));
 				return -1;
 			}
@@ -2013,7 +2013,7 @@ int HandleEndClient(int sock) {
 			if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(NGQM), 0, NULL,
 					NULL)) != sizeof(NGQM)) {
 				printf(
-						"projb %s error: HandleEndClient recv succ-q recvfrom ret %d, shoulde recv %lu\n",
+						"projb %s error: HandleEndClient recv succ-q recvfrom ret %d, shoulde recv %u\n",
 						Myname, nRecvbytes, sizeof(NGQM));
 				return -1;
 			}
@@ -2036,7 +2036,7 @@ int HandleEndClient(int sock) {
 					(struct sockaddr *) &naaddr, sizeof(naaddr)))
 					!= sizeof(NGRM)) {
 				printf(
-						"projb %s error: HandleEndClient succ-r to other sendto ret %d, should send %lu\n",
+						"projb %s error: HandleEndClient succ-r to other sendto ret %d, should send %u\n",
 						Myname, nSendbytes, sizeof(NGRM));
 				return -1;
 			}
@@ -2049,7 +2049,7 @@ int HandleEndClient(int sock) {
 			if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(LERM), 0, NULL,
 					NULL)) != sizeof(LERM)) {
 				printf(
-						"projb %s error: HandleEndClient update loop leav-r recvfrom ret %d, shoulde recv %lu\n",
+						"projb %s error: HandleEndClient update loop leav-r recvfrom ret %d, shoulde recv %u\n",
 						Myname, nRecvbytes, sizeof(LERM));
 				return -1;
 			}
@@ -2105,7 +2105,7 @@ int LeaveUpdateNeighbor(int sock, TNode *chgpreNode, TNode *chgsucNode) {
 
 	if ((nSendbytes = sendto(sock, sendbuf, sizeof(UPQM), 0,
 			(struct sockaddr *) &naaddr, sizeof(naaddr))) != sizeof(UPQM)) {
-		printf("projb error: update_neighbor sendto ret %d, should send %lu\n",
+		printf("projb error: update_neighbor sendto ret %d, should send %u\n",
 				nSendbytes, sizeof(UPQM));
 		return -1;
 	}
@@ -2122,7 +2122,7 @@ int LeaveUpdateNeighbor(int sock, TNode *chgpreNode, TNode *chgsucNode) {
 		if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(UPRM), 0, NULL, NULL))
 				!= sizeof(UPRM)) {
 			printf(
-					"projb error: update_neighbor recvfrom ret %d, shoulde recv %lu\n",
+					"projb error: update_neighbor recvfrom ret %d, shoulde recv %u\n",
 					nRecvbytes, sizeof(UPRM));
 			return -1;
 		}
@@ -2141,7 +2141,7 @@ int LeaveUpdateNeighbor(int sock, TNode *chgpreNode, TNode *chgsucNode) {
 
 	if ((nSendbytes = sendto(sock, sendbuf, sizeof(UPQM), 0,
 			(struct sockaddr *) &naaddr, sizeof(naaddr))) != sizeof(UPQM)) {
-		printf("projb error: update_neighbor sendto ret %d, should send %lu\n",
+		printf("projb error: update_neighbor sendto ret %d, should send %u\n",
 				nSendbytes, sizeof(UPQM));
 		return -1;
 	}
@@ -2157,7 +2157,7 @@ int LeaveUpdateNeighbor(int sock, TNode *chgpreNode, TNode *chgsucNode) {
 		if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(UPRM), 0, NULL, NULL))
 				!= sizeof(UPRM)) {
 			printf(
-					"projb error: update_neighbor recvfrom ret %d, shoulde recv %lu\n",
+					"projb error: update_neighbor recvfrom ret %d, shoulde recv %u\n",
 					nRecvbytes, sizeof(UPRM));
 			return -1;
 		}
@@ -2221,7 +2221,7 @@ int FindClosest(int sock, int msgt, unsigned int targetid, TNode na, TNode *pnb)
 
 	if ((nSendbytes = sendto(sock, sendbuf, sizeof(CLQM), 0,
 			(struct sockaddr *) &naaddr, sizeof(naaddr))) != sizeof(CLQM)) {
-		printf("projb error: find_closest sendto ret %d, should send %lu\n",
+		printf("projb error: find_closest sendto ret %d, should send %u\n",
 				nSendbytes, sizeof(CLQM));
 		return -1;
 	}
@@ -2234,7 +2234,7 @@ int FindClosest(int sock, int msgt, unsigned int targetid, TNode na, TNode *pnb)
 	 **********************************************************************/
 	if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(CLRM), 0, NULL, NULL))
 			!= sizeof(CLRM)) {
-		printf("projb error: find_closest recvfrom ret %d, shoulde recv %lu\n",
+		printf("projb error: find_closest recvfrom ret %d, shoulde recv %u\n",
 				nRecvbytes, sizeof(CLRM));
 		return -1;
 	}
