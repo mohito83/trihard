@@ -161,7 +161,7 @@ int main(int argc, char *argv[]) {
 
 			// add client name to list
 			AddKillClntNode(sText);
-			AddMgrJobNode(ENDJOB);
+			AddMgrJobNode(KILLJOB);
 		}
 	}
 

@@ -381,9 +381,9 @@ int manager(void) {
 							nBytestosend = strlen(szSendbuf);
 							if (SendStreamData(tempcn->tcpsock, szSendbuf,
 									nBytestosend) < 0) {
-								printf("manager: send end_client error\n");
+								printf("manager: send kill_client error\n");
 							}
-							printf("manager: send one end_client job: %s\n",
+							printf("manager: send one kill_client job: %s\n",
 									pkillclPos->namestr);
 
 							pkillclPos = pkillclPos->next;
@@ -494,9 +494,9 @@ int manager(void) {
 							nBytestosend = strlen(szSendbuf);
 							if (SendStreamData(tempcn->tcpsock, szSendbuf,
 									nBytestosend) < 0) {
-								printf("manager: send end_client error\n");
+								printf("manager: send kill_client error\n");
 							}
-							printf("manager: send one end_client job: %s\n",
+							printf("manager: send one kill_client job: %s\n",
 									pkillclPos->namestr);
 
 							pkillclPos = pkillclPos->next;
