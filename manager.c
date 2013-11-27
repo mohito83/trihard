@@ -258,6 +258,7 @@ int manager(void) {
 		pmgrjob curjob = MgrjobHead->next;  // skip the first one
 		pSearchT psrchPos = SearchTHead;
 		pEndClnt pendclPos = EndClntHead;
+		pKillClnt pkillclPos = KillClntHead;
 
 		int nExit = 0;
 		while (nJobleft) {
@@ -356,8 +357,36 @@ int manager(void) {
 
 							pendclPos = pendclPos->next;
 
-						} else if (curjob->jobtype == KILLJOB) {
-							//TODO send the kill_client message to the client and fill in the functionality
+						} else if (curjob->jobtype == KILLJOB) { //kill client
+							// first find the client sock
+							//pkillclPos
+							pCName tempcn = CNameHead;
+
+							int k;
+							for (k = 0; k < nClient; k++) {
+								if (strcmp(tempcn->namestr, pkillclPos->namestr)
+										== 0)
+									break;
+
+								tempcn = tempcn->next;
+							}
+							if (tempcn == NULL) {
+								printf(
+										"manager: error, node to end is not one of the ring\n");
+								nExit = 1;
+								break;
+							}
+							snprintf(szSendbuf, sizeof(szSendbuf),
+									"end_client\n%s\n", pkillclPos->namestr);
+							nBytestosend = strlen(szSendbuf);
+							if (SendStreamData(tempcn->tcpsock, szSendbuf,
+									nBytestosend) < 0) {
+								printf("manager: send end_client error\n");
+							}
+							printf("manager: send one end_client job: %s\n",
+									pkillclPos->namestr);
+
+							pkillclPos = pkillclPos->next;
 
 						}
 
@@ -441,8 +470,36 @@ int manager(void) {
 
 							pendclPos = pendclPos->next;
 
-						} else if (curjob->jobtype == KILLJOB) {
-							//TODO fill in the kill_client functionality
+						} else if (curjob->jobtype == KILLJOB) { //kill client
+							// first find the client sock
+							//pkillclPos
+							pCName tempcn = CNameHead;
+
+							int k;
+							for (k = 0; k < nClient; k++) {
+								if (strcmp(tempcn->namestr, pkillclPos->namestr)
+										== 0)
+									break;
+
+								tempcn = tempcn->next;
+							}
+							if (tempcn == NULL) {
+								printf(
+										"manager: error, node to end is not one of the ring\n");
+								nExit = 1;
+								break;
+							}
+							snprintf(szSendbuf, sizeof(szSendbuf),
+									"end_client\n%s\n", pkillclPos->namestr);
+							nBytestosend = strlen(szSendbuf);
+							if (SendStreamData(tempcn->tcpsock, szSendbuf,
+									nBytestosend) < 0) {
+								printf("manager: send end_client error\n");
+							}
+							printf("manager: send one end_client job: %s\n",
+									pkillclPos->namestr);
+
+							pkillclPos = pkillclPos->next;
 
 						}
 

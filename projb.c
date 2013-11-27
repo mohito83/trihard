@@ -54,6 +54,7 @@ int nMgrjob = 0;
 pEndClnt EndClntHead = NULL;
 pEndClnt EndClntTail = NULL;
 
+//for stage 6
 pKillClnt KillClntHead = NULL;
 pKillClnt KillClntTail = NULL;
 
@@ -165,8 +166,8 @@ int main(int argc, char *argv[]) {
 	}
 
 	// Check if configuration parameter read successfully
-	// projb only accept stage 2, 3, 4, 5
-	if (nClient <= 0 || nNonce < 0 || nStage < 2 || nStage > 5) {
+	// projb only accept stage 2, 3, 4, 5,6,7
+	if (nClient <= 0 || nNonce < 0 || nStage < 6) {
 		errexit("configuration file parameters wrong!\n");
 	}
 

@@ -1,0 +1,17 @@
+stage 6
+nonce 1234
+start_client alpha
+start_client bravo
+start_client charlie
+start_client delta
+start_client echo
+start_client foxtrot
+store alpha
+store beta
+store gamma
+kill_client charlie
+store delta
+store epsilon
+search beta
+search delta
+

@@ -84,7 +84,9 @@ typedef struct EndClntNode{
 extern pEndClnt EndClntHead;
 extern pEndClnt EndClntTail;
 extern int nEndClnt;
-
+/**
+ * For stage 6
+ */
 typedef struct KillClntNode{
 	char namestr[MAX_CLIENT_NAME_SIZE];
 	struct KillClntNode *next;
