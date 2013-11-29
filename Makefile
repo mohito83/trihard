@@ -5,4 +5,5 @@ main: $(TOPDIR)/projb.c $(TOPDIR)/projb.h $(TOPDIR)/manager.c $(TOPDIR)/manager.
 	$(CC) -Wall $(TOPDIR)/projb.c $(TOPDIR)/manager.c $(TOPDIR)/client.c $(TOPDIR)/comm.c $(TOPDIR)/sha1.c $(TOPDIR)/log.c $(TOPDIR)/ring.c -o $(TOPDIR)/projc
 
 clean:
-	rm -rf projc *.o *.out
+	rm -rf projc
+
