@@ -333,7 +333,33 @@ int client(int mgrport) {
 						break;
 					}
 				} else if (strcmp(szRecvbuf, "kill_client") == 0) {
-					//TODO fill in the functionality
+
+					// handle end_client command
+					memset(sstr, 0, sizeof(sstr));
+					if ((nRecvbyte = RecvStreamLineForSelect(nSockwkr, sstr,
+							sizeof(sstr))) <= 0) {
+						printf(
+								"projc client %s error: recv kill_client string from manager!\n",
+								Myname);
+						break;
+					}
+					sstr[nRecvbyte - 1] = '\0';
+
+					// sanity check
+					if (strcmp(sstr, Myname) != 0) {
+						printf(
+								"projb client %s error: target of kill_client is not me! name: %s\n",
+								Myname, sstr);
+						break;
+					}
+
+					if (HandleKillClient(udpSock) < 0) {
+						printf(
+								"projb client %s error: handle kill_client msg from manager!\n",
+								Myname);
+						break;
+					}
+
 
 				}   // end handling of commands
 
@@ -1542,6 +1568,10 @@ int HandleUdpMessage(int sock) {
 		}
 	}
 		break;
+	case HNDPREDQ:{
+		//TODO
+	}
+		break;
 	default:  // should not happen
 		printf(
 				"projb exception: recv unexpected Triad message %d. I'm %s %08x port %d\n",
@@ -2287,6 +2317,14 @@ void AddClientStore(unsigned int id, char *str) {
 	}
 }
 
+/**
+ * This function handles the kill client request from the manager
+ */
+int HandleKillClient(int sock){
+	//TODO
+	return 0;
+}
+
 void LogTyiadMsg(int mtype, int sorr, char *buf) {
 	pngqm temp1;
 	pngrm temp2;
@@ -2458,6 +2496,14 @@ void LogTyiadMsg(int mtype, int sorr, char *buf) {
 		}
 		logfilewriteline(logfilename, writebuf, strlen(writebuf));
 		msglen = sizeof(NXRM) + nsl;
+	}
+		break;
+	case HNDPREDQ: {
+		//TODO
+	}
+		break;
+	case HNDPREDR: {
+		//TODO
 	}
 		break;
 	default:

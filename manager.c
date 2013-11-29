@@ -377,7 +377,7 @@ int manager(void) {
 								break;
 							}
 							snprintf(szSendbuf, sizeof(szSendbuf),
-									"end_client\n%s\n", pkillclPos->namestr);
+									"kill_client\n%s\n", pkillclPos->namestr);
 							nBytestosend = strlen(szSendbuf);
 							if (SendStreamData(tempcn->tcpsock, szSendbuf,
 									nBytestosend) < 0) {
@@ -490,7 +490,7 @@ int manager(void) {
 								break;
 							}
 							snprintf(szSendbuf, sizeof(szSendbuf),
-									"end_client\n%s\n", pkillclPos->namestr);
+									"kill_client\n%s\n", pkillclPos->namestr);
 							nBytestosend = strlen(szSendbuf);
 							if (SendStreamData(tempcn->tcpsock, szSendbuf,
 									nBytestosend) < 0) {

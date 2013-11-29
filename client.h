@@ -51,6 +51,9 @@ typedef struct TriadNode{
 #define NXTDQ 23
 #define NXTDR 24
 
+#define HNDPREDQ 31
+#define HNDPREDR	32
+
 #define MAX_TEXT_SIZE 96
 
 #define HASHMAX 0xFFFFFFFF
@@ -144,6 +147,20 @@ typedef struct nxtdreplymsg{
   int sl;
 }NXRM, *pnxrm;
 
+/*
+ * Handle predecessor query and response messages
+ */
+typedef struct handlepredquerymsg{
+	int msgid;
+	unsigned int ni;
+}HPQM, *phpqm;
+
+typedef struct handlepredreplymsg{
+	int msgid;
+	unsigned int ni;
+	unsigned int pi;
+	int pp;
+}HPRM, *phprm;
 
 typedef struct ClientStore
 {
@@ -190,6 +207,8 @@ int HandleEndClient(int sock);
 int LeaveUpdateNeighbor(int sock, TNode *chgpreNode, TNode *chgsucNode);
 
 void AddClientStore(unsigned int id, char *str);
+
+int HandleKillClient(int sock);
 
 // debug only
 void LogFingerTable();
