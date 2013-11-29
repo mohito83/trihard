@@ -93,7 +93,7 @@ int client(int mgrport) {
 	int nRecvbyte;
 	int nSendlen; //, nRemainlen;//, nSent;
 	//int   nRecvbufsize, nWrtpos;
-	int nSum;
+	int nSum, isKillRequest = 0;
 	//char  szWritebuf[256];
 
 	fd_set readset;
@@ -353,14 +353,8 @@ int client(int mgrport) {
 						break;
 					}
 
-					if (HandleKillClient(udpSock) < 0) {
-						printf(
-								"projb client %s error: handle kill_client msg from manager!\n",
-								Myname);
-						break;
-					}
-
-
+					//Take no action when kill_client command is received, just die right away
+					isKillRequest = 1;
 				}   // end handling of commands
 
 				// tell manger ok
@@ -374,6 +368,9 @@ int client(int mgrport) {
 					return -1;
 				}
 
+				if (isKillRequest) {
+					break;
+				}
 			} // end jobs assignment
 		} // end manager socket handling
 	} // end select loop
@@ -1013,8 +1010,7 @@ int UpdateFingerTable(int sock, TNode tn, TNode sn, int idx) {
 
 	if ((nSendbytes = sendto(sock, sendbuf, sizeof(UPQM), 0,
 			(struct sockaddr *) &naaddr, sizeof(naaddr))) != sizeof(UPQM)) {
-		printf(
-				"projb error: UpdateFingerTable sendto ret %d, should send %u\n",
+		printf("projb error: UpdateFingerTable sendto ret %d, should send %u\n",
 				nSendbytes, sizeof(UPQM));
 		return -1;
 	}
@@ -1466,7 +1462,7 @@ int HandleUdpMessage(int sock) {
 				 *** for stage >= 6, needs to judge if the hello messages comes here ******
 				 **********************************************************************/
 				if ((recvlen = recvfrom(sock, recvbuf, sizeof(recvbuf), 0, NULL,
-						NULL)) < 0) {
+				NULL)) < 0) {
 					printf(
 							"projb %s error: HandleUdpMessage NXTDR recvfrom fail\n",
 							Myname);
@@ -1568,7 +1564,7 @@ int HandleUdpMessage(int sock) {
 		}
 	}
 		break;
-	case HNDPREDQ:{
+	case HDPRQ: {
 		//TODO
 	}
 		break;
@@ -2041,7 +2037,7 @@ int HandleEndClient(int sock) {
 			 *** for stage >= 6, needs to judge if the hello messages comes here ******
 			 **********************************************************************/
 			if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(NGQM), 0, NULL,
-					NULL)) != sizeof(NGQM)) {
+			NULL)) != sizeof(NGQM)) {
 				printf(
 						"projb %s error: HandleEndClient recv succ-q recvfrom ret %d, shoulde recv %u\n",
 						Myname, nRecvbytes, sizeof(NGQM));
@@ -2077,7 +2073,7 @@ int HandleEndClient(int sock) {
 			 *** for stage >= 6, needs to judge if the hello messages comes here ******
 			 **********************************************************************/
 			if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(LERM), 0, NULL,
-					NULL)) != sizeof(LERM)) {
+			NULL)) != sizeof(LERM)) {
 				printf(
 						"projb %s error: HandleEndClient update loop leav-r recvfrom ret %d, shoulde recv %u\n",
 						Myname, nRecvbytes, sizeof(LERM));
@@ -2317,14 +2313,6 @@ void AddClientStore(unsigned int id, char *str) {
 	}
 }
 
-/**
- * This function handles the kill client request from the manager
- */
-int HandleKillClient(int sock){
-	//TODO
-	return 0;
-}
-
 void LogTyiadMsg(int mtype, int sorr, char *buf) {
 	pngqm temp1;
 	pngrm temp2;
@@ -2498,11 +2486,11 @@ void LogTyiadMsg(int mtype, int sorr, char *buf) {
 		msglen = sizeof(NXRM) + nsl;
 	}
 		break;
-	case HNDPREDQ: {
+	case HDPRQ: {
 		//TODO
 	}
 		break;
-	case HNDPREDR: {
+	case HDPRR: {
 		//TODO
 	}
 		break;

@@ -385,9 +385,13 @@ int manager(void) {
 							}
 							printf("manager: send one kill_client job: %s\n",
 									pkillclPos->namestr);
+							printf("manager: After kill_client job wait for %d seconds\n",
+									KILL_CLIENT_TIMEOUT);
 
 							pkillclPos = pkillclPos->next;
 
+							//sleep for 60 seconds before executing the next command
+							sleep(KILL_CLIENT_TIMEOUT);
 						}
 
 						curjob = curjob->next;
@@ -498,9 +502,13 @@ int manager(void) {
 							}
 							printf("manager: send one kill_client job: %s\n",
 									pkillclPos->namestr);
+							printf("manager: After kill_client job wait for %d seconds\n",
+									KILL_CLIENT_TIMEOUT);
 
 							pkillclPos = pkillclPos->next;
 
+							//sleep for 60 seconds before executing the next command
+							sleep(KILL_CLIENT_TIMEOUT);
 						}
 
 						curjob = curjob->next;
