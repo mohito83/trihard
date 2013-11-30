@@ -57,6 +57,7 @@ int nCStore = 0;
 FTNODE MyFT[FTLEN];  // finger table
 TNode succ; // successor node
 TNode pred; // predecessor node
+TNode doublesucc; //double successor node
 
 char logfilename[256];
 
@@ -259,6 +260,7 @@ int client(int mgrport) {
 				}
 			} else {   // jobs assignment
 				szRecvbuf[nRecvbyte - 1] = '\0';
+				printf("client: message received by client %s =%s\n",Myname,szRecvbuf);
 				if (strcmp(szRecvbuf, "exit!") == 0) {
 					//printf("projb client %s recv EXIT from manager!\n", Myname);
 
@@ -361,6 +363,7 @@ int client(int mgrport) {
 				snprintf(szSendbuf, sizeof(szSendbuf), "ok\n");
 				nSendlen = strlen(szSendbuf);
 
+				printf("client: %s sends back \"%s\"",Myname,szSendbuf);
 				if (SendStreamData(nSockwkr, szSendbuf, nSendlen) < 0) {
 					printf(
 							"projb worker %d error: send ok back to manager error! Exit!\n",
@@ -369,6 +372,7 @@ int client(int mgrport) {
 				}
 
 				if (isKillRequest) {
+					printf("client: %s killing self\n",Myname);
 					break;
 				}
 			} // end jobs assignment
@@ -542,6 +546,7 @@ int JoinRingWithFingerTable(int sock) {
 int InitFingerTable(int sock) {
 	TNode mysucc;
 	TNode mypred;
+	TNode mydoubsucc;
 	int i;
 
 	// get my successor
@@ -598,6 +603,16 @@ int InitFingerTable(int sock) {
 				Myname);
 		return -1;
 	}
+
+	//fire a request to get my double successor
+	if (FindNeighbor(sock, SUCCQ, mysucc, &mydoubsucc) < 0) {
+		printf(
+				"projb client %s: InitFingerTable->FindNeighbor find successor fails!\n",
+				Myname);
+		return -1;
+	}
+	doublesucc.id = mydoubsucc.id;
+	doublesucc.port = mydoubsucc.port;
 
 	// now update my finger table
 	// just look at those finger table entries whose node is my successor
@@ -724,6 +739,9 @@ void InitFingerTableSelf() {
 
 	succ.id = HashID;
 	succ.port = MyUDPPort;
+	//initialize double successor
+	doublesucc.id = HashID;
+	doublesucc.port = MyUDPPort;
 	pred.id = HashID;
 	pred.port = MyUDPPort;
 
@@ -1224,6 +1242,19 @@ int HandleUdpMessage(int sock) {
 				}
 				LogTyiadMsg(UPDTR, SENTFLAG, sendbuf);
 			}
+
+			//update your double successor node
+			/*TNode mysucc,mydoubsucc;
+			mysucc.id=succ.id;
+			mysucc.port=succ.port;
+			if (FindNeighbor(sock, SUCCQ, mysucc, &mydoubsucc) < 0) {
+				printf(
+						"projb client %s: HandleUDPMEssage->FindNeighbor find successor fails!\n",
+						Myname);
+				return -1;
+			}
+			doublesucc.id = mydoubsucc.id;
+			doublesucc.port = mydoubsucc.port;*/
 		} else {
 			if (nStage < 4) {
 				printf(

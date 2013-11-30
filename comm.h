@@ -30,6 +30,7 @@
 
 #define SELECT_TIMEOUT 3600  //60min
 #define KILL_CLIENT_TIMEOUT	60	//60 seconds
+#define REPAIR_TIMEOUT	10	//10 seconds
 
 /**
  * This function reads in <code>length</code> bytes from
