@@ -542,7 +542,8 @@ int JoinRingWithFingerTable(int sock) {
 	snprintf(wbuf, sizeof(wbuf), "client %s created with hash 0x%08x\n", Myname,
 			HashID);
 	logfilewriteline(logfilename, wbuf, strlen(wbuf));
-
+	/*******************For Debug only*/
+	logNodeInfo();
 	return 0;
 }
 
@@ -727,16 +728,41 @@ int UpdateOthers(int sock) {
 		 }*/
 	}
 
-	//update the predecessor's double successor with your own information
+	/*******************For Debug only*/
+	logNodeInfo();
+	//update the predecessor's double successor with your successor's information
+	//and double predecessor's double successor with your information.
 	if (doublesucc.id != HashID) {
-		TNode mypred;
+		TNode mypred, mysucc, mydoublepred, self;
 		mypred.id = pred.id;
 		mypred.port = pred.port;
-		if (UpdateFingerTable(sock, mypred, myself, UPDATE_PRED_INDEX) < 0) {
+		mysucc.id = succ.id;
+		mysucc.port = succ.port;
+		if (UpdateFingerTable(sock, mypred, mysucc, UPDATE_PRED_INDEX) < 0) {
 			printf(
 					"projb client %s: UpdateOthers->UpdateFingerTable 0x%08x %d fails!\n",
 					Myname, temppr.id, i);
 			return -1;
+		}
+
+		if (pred.id != doublesucc.id) {
+			//find your double predecessor
+			if (FindNeighbor(sock, PREDQ, mypred, &mydoublepred) < 0) {
+				printf(
+						"projb client %s: UpdateOthers->FindNeighbor find double predecessor fails!\n",
+						Myname);
+				return -1;
+			}
+			self.id = HashID;
+			self.port = MyUDPPort;
+			//update the double predcessor's double successor with your own informaiton
+			if (UpdateFingerTable(sock, mydoublepred, self, UPDATE_PRED_INDEX)
+					< 0) {
+				printf(
+						"projb client %s: UpdateOthers->UpdateFingerTable 0x%08x %d fails!\n",
+						Myname, temppr.id, i);
+				return -1;
+			}
 		}
 	}
 	return 0;
@@ -1287,7 +1313,9 @@ int HandleUdpMessage(int sock) {
 					//update self double successor pointer
 					doublesucc.id = t.id;
 					doublesucc.port = t.port;
-					printf("client: HandleUdpMessages(): client's %s double successsor is (0x%x,%d)\n",Myname,doublesucc.id,doublesucc.port);
+					printf(
+							"client: HandleUdpMessages(): client's %s double successsor is (0x%x,%d)\n",
+							Myname, doublesucc.id, doublesucc.port);
 				} else {
 					if (UpdateMyFingerTable(sock, t, idx) < 0) {
 						printf(
@@ -2589,4 +2617,12 @@ void LogFingerTable() {
 	}
 	snprintf(wbuf, sizeof(wbuf), "---------------------------------\n");
 	logfilewriteline(logfilename, wbuf, strlen(wbuf));
+}
+
+void logNodeInfo() {
+
+	printf(
+			"Client: name=%s, hashid=0x%x, port=%d, predecessor(0x%x,%d), successor(0x%x,%d), double successor(0x%x,%d)\n",
+			Myname, HashID, MyUDPPort, pred.id, pred.port, succ.id, succ.port,
+			doublesucc.id, doublesucc.port);
 }

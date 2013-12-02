@@ -210,4 +210,5 @@ void AddClientStore(unsigned int id, char *str);
 
 // debug only
 void LogFingerTable();
+void logNodeInfo();
 #endif
