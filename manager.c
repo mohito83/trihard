@@ -266,7 +266,6 @@ int manager(void) {
 		while (nJobleft) {
 
 			if (nExit == 1) {
-				printf("manager: a) nExit flag = %d\n", nExit);
 				break;
 			}
 
@@ -289,7 +288,6 @@ int manager(void) {
 									"projb manager error: receive first client message error!\n");
 						} else if (nRecvbytes == 0) {
 							nExit = 1;
-							printf("manager: b) nExit flag = %d\n", nExit);
 							break;
 						}
 
@@ -303,7 +301,6 @@ int manager(void) {
 						}
 
 						nJobleft--;
-						printf("manager: a)number of jobs left=%d\n", nJobleft);
 						if (nJobleft == 0) {
 							break;
 						}
@@ -409,12 +406,11 @@ int manager(void) {
 									"projb manager error: receive first client message error!\n");
 						} else if (nRecvbytes == 0) {
 							nExit = 1;
-							printf("manager: c) nExit flag = %d\n", nExit);
 							break;
 						}
 
 						if (prevJobWasKill) {
-							//TODO remove the defunct client's tcp and udp sockets from the manager
+							//remove the defunct client's tcp and udp sockets from the manager
 							FD_CLR(clientToKill->tcpsock,&sockset);
 							close(clientToKill->tcpsock);
 							//sleep for 60 seconds before executing the next command
@@ -432,7 +428,6 @@ int manager(void) {
 							break;
 						}
 						nJobleft--;
-						printf("manager: b)number of jobs left=%d\n", nJobleft);
 						if (nJobleft == 0) {
 							break;
 						}
@@ -533,7 +528,6 @@ int manager(void) {
 				}
 			}
 
-			printf("manager: c)number of jobs left=%d\n", nJobleft);
 			if (nJobleft == 0)
 				break;
 		}

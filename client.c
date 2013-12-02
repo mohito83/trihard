@@ -43,6 +43,8 @@
 #include "log.h"
 #include "ring.h"
 
+#define UPDATE_PRED_INDEX 100
+
 unsigned int HashID; // my hash id
 unsigned int HashIDfirst;   // first node hash id
 char Myname[MAX_CLIENT_NAME_SIZE] = { 0 };  // Triad string name of self
@@ -260,7 +262,8 @@ int client(int mgrport) {
 				}
 			} else {   // jobs assignment
 				szRecvbuf[nRecvbyte - 1] = '\0';
-				printf("client: message received by client %s =%s\n",Myname,szRecvbuf);
+				printf("client: message received by client %s =%s\n", Myname,
+						szRecvbuf);
 				if (strcmp(szRecvbuf, "exit!") == 0) {
 					//printf("projb client %s recv EXIT from manager!\n", Myname);
 
@@ -363,7 +366,7 @@ int client(int mgrport) {
 				snprintf(szSendbuf, sizeof(szSendbuf), "ok\n");
 				nSendlen = strlen(szSendbuf);
 
-				printf("client: %s sends back \"%s\"",Myname,szSendbuf);
+				printf("client: %s sends back \"%s\"", Myname, szSendbuf);
 				if (SendStreamData(nSockwkr, szSendbuf, nSendlen) < 0) {
 					printf(
 							"projb worker %d error: send ok back to manager error! Exit!\n",
@@ -372,7 +375,7 @@ int client(int mgrport) {
 				}
 
 				if (isKillRequest) {
-					printf("client: %s killing self\n",Myname);
+					printf("client: %s killing self\n", Myname);
 					break;
 				}
 			} // end jobs assignment
@@ -613,6 +616,9 @@ int InitFingerTable(int sock) {
 	}
 	doublesucc.id = mydoubsucc.id;
 	doublesucc.port = mydoubsucc.port;
+	printf(
+			"client: InitFingerTable(): client's %s double successsor is (0x%x,%d)\n",
+			Myname, doublesucc.id, doublesucc.port);
 
 	// now update my finger table
 	// just look at those finger table entries whose node is my successor
@@ -719,6 +725,19 @@ int UpdateOthers(int sock) {
 
 		 tempFstart = RingPlus(temppr.id, exp);
 		 }*/
+	}
+
+	//update the predecessor's double successor with your own information
+	if (doublesucc.id != HashID) {
+		TNode mypred;
+		mypred.id = pred.id;
+		mypred.port = pred.port;
+		if (UpdateFingerTable(sock, mypred, myself, UPDATE_PRED_INDEX) < 0) {
+			printf(
+					"projb client %s: UpdateOthers->UpdateFingerTable 0x%08x %d fails!\n",
+					Myname, temppr.id, i);
+			return -1;
+		}
 	}
 	return 0;
 }
@@ -1245,16 +1264,16 @@ int HandleUdpMessage(int sock) {
 
 			//update your double successor node
 			/*TNode mysucc,mydoubsucc;
-			mysucc.id=succ.id;
-			mysucc.port=succ.port;
-			if (FindNeighbor(sock, SUCCQ, mysucc, &mydoubsucc) < 0) {
-				printf(
-						"projb client %s: HandleUDPMEssage->FindNeighbor find successor fails!\n",
-						Myname);
-				return -1;
-			}
-			doublesucc.id = mydoubsucc.id;
-			doublesucc.port = mydoubsucc.port;*/
+			 mysucc.id=succ.id;
+			 mysucc.port=succ.port;
+			 if (FindNeighbor(sock, SUCCQ, mysucc, &mydoubsucc) < 0) {
+			 printf(
+			 "projb client %s: HandleUDPMEssage->FindNeighbor find successor fails!\n",
+			 Myname);
+			 return -1;
+			 }
+			 doublesucc.id = mydoubsucc.id;
+			 doublesucc.port = mydoubsucc.port;*/
 		} else {
 			if (nStage < 4) {
 				printf(
@@ -1263,14 +1282,22 @@ int HandleUdpMessage(int sock) {
 			} else {
 				t.id = ntohl(ptr->si);
 				t.port = ntohl(ptr->sp);
-				if (UpdateMyFingerTable(sock, t, idx) < 0) {
-					printf(
-							"projb error: client %s HandleUdpMessage update message UpdateMyFingerTable fails!\n",
-							Myname);
-					return -1;
+
+				if (idx == UPDATE_PRED_INDEX) {
+					//update self double successor pointer
+					doublesucc.id = t.id;
+					doublesucc.port = t.port;
+					printf("client: HandleUdpMessages(): client's %s double successsor is (0x%x,%d)\n",Myname,doublesucc.id,doublesucc.port);
+				} else {
+					if (UpdateMyFingerTable(sock, t, idx) < 0) {
+						printf(
+								"projb error: client %s HandleUdpMessage update message UpdateMyFingerTable fails!\n",
+								Myname);
+						return -1;
+					}
+
 				}
 
-				// send reply
 				UPRM uprmsg;
 				uprmsg.msgid = htonl(UPDTR);
 				uprmsg.ni = htonl(HashID);
