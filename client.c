@@ -2770,6 +2770,7 @@ int HandleHelloPredecessorMsg(int sock, TNode ta) {
 
 	// only receive reply after stage 4
 	if (nStage >= 2) {
+		char writebuf[256];
 		// receive reply
 		/**********************************************************************
 		 *** for stage >= 6, needs to judge if the hello messages comes here ******
@@ -2783,6 +2784,7 @@ int HandleHelloPredecessorMsg(int sock, TNode ta) {
 		FD_SET(sock, &read_set);
 
 		int status = select(sock + 1, &read_set, NULL, NULL, &tmv);
+		printf("Mohit----------> select() %d\n", status);
 		if (status > 0) {
 			if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(HPRM), 0, NULL,
 			NULL)) != sizeof(HPRM)) {
@@ -2791,67 +2793,86 @@ int HandleHelloPredecessorMsg(int sock, TNode ta) {
 				LogTyiadMsg(HDPRR, RECVFLAG, recvbuf);
 
 				phprm hprm;
-				char writebuf[256];
+				unsigned int predID = ntohl(hprm->pi)
 
 				hprm = (phprm) recvbuf;
-				if (HashID == ntohl(hprm->pi)) {
+				if (HashID == predID) {
 					snprintf(writebuf, sizeof(writebuf),
 							"hello-predecessor-r confirms my successor's predecessor is me, 0x%08x.\n",
-							ntohl(hprm->ni));
+							predID);
 					logfilewriteline(logfilename, writebuf, strlen(writebuf));
 				} else {
-					//TODO handle other conditions
+					sprintf(writebuf,
+							"hello-predecessor-r reports my successor's predecessor is 0x%08x, not me 0x%08x.\n",
+							predID, HashID);
+					logfilewriteline(logfilename, writebuf, strlen(writebuf));
+
+				if(predID>HashID){
+					sprintf(writebuf,"hello-predecessor-r causes repair of my links\n");
+					logfilewriteline(logfilename, writebuf, strlen(writebuf));
+					//TODO correct its successor and finger table
+				}
+
+				if(predID<HashID){
+					sprintf(writebuf,"hello-predecessor-r causes me to repair my successor's predecessor\n");
+					logfilewriteline(logfilename, writebuf, strlen(writebuf));
+					//TODO It should then cause its successor to correctly rebuild its predecessor link by
+					//sending it an update-q message where i = 0.
 				}
 			}
-		} else if (status == 0) {
-			processMsgBucket(sock, naaddr);
 		}
+	} else if (status == 0) {
+		sprintf(writebuf,"hello-predecessor-r non-reply: my successor is non-responsive\n");
+		logfilewriteline(logfilename, writebuf, strlen(writebuf));
 
+		processMsgBucket(sock, naaddr);
 	}
 
-	return 0;
+}
+
+return 0;
 }
 
 /**
  * This function processes the messages waiting in the message bucket
  */
 void processMsgBucket(int sock, struct sockaddr_in naaddr) {
-	//printf("%s: Inside ProcessMsgBucket()\n", Myname);
-	socklen_t sa_len = sizeof(naaddr);
-	pMBucket temp = MBucketHead;
-	char sendbuf[MAX_MSG_SIZE];
-	int sendlen;
-	while (nMsgCount) {
-		char *recvbuf = temp->msg;
-		LogTyiadMsg(HDPRQ, RECVFLAG, recvbuf);
-		HPQM *hpqm;
+//printf("%s: Inside ProcessMsgBucket()\n", Myname);
+socklen_t sa_len = sizeof(naaddr);
+pMBucket temp = MBucketHead;
+char sendbuf[MAX_MSG_SIZE];
+int sendlen;
+while (nMsgCount) {
+	char *recvbuf = temp->msg;
+	LogTyiadMsg(HDPRQ, RECVFLAG, recvbuf);
+	HPQM *hpqm;
 
-		hpqm = (phpqm) recvbuf;
+	hpqm = (phpqm) recvbuf;
 
-		TNode mypred;
-		mypred.id = pred.id;
-		mypred.port = pred.port;
-		HPRM repmsg;
-		repmsg.msgid = htonl(HDPRR);
-		repmsg.ni = hpqm->ni;
-		repmsg.pi = htonl(mypred.id);
-		repmsg.pp = htonl(mypred.port);
-		memcpy(sendbuf, &repmsg, sizeof(HPRM));
+	TNode mypred;
+	mypred.id = pred.id;
+	mypred.port = pred.port;
+	HPRM repmsg;
+	repmsg.msgid = htonl(HDPRR);
+	repmsg.ni = hpqm->ni;
+	repmsg.pi = htonl(mypred.id);
+	repmsg.pp = htonl(mypred.port);
+	memcpy(sendbuf, &repmsg, sizeof(HPRM));
 
-		if ((sendlen = sendto(sock, sendbuf, sizeof(HPRM), 0,
-				(struct sockaddr *) &naaddr, sa_len)) != sizeof(HPRM)) {
-			printf(
-					"projb client %s error: HandleUdpMessage succ-q sendto ret %d, should send %u\n",
-					Myname, sendlen, sizeof(HPRM));
-			return;
-		}
-		LogTyiadMsg(HDPRR, SENTFLAG, sendbuf);
-
+	if ((sendlen = sendto(sock, sendbuf, sizeof(HPRM), 0,
+			(struct sockaddr *) &naaddr, sa_len)) != sizeof(HPRM)) {
 		printf(
-				"Mohit--> %s: Processed one message from the bucket. Remaining tasks=%d\n",
-				Myname, (nMsgCount - 1));
-		temp = temp->next;
-		MBucketHead = temp;
-		nMsgCount--;
+				"projb client %s error: HandleUdpMessage succ-q sendto ret %d, should send %u\n",
+				Myname, sendlen, sizeof(HPRM));
+		return;
 	}
+	LogTyiadMsg(HDPRR, SENTFLAG, sendbuf);
+
+	printf(
+			"Mohit--> %s: Processed one message from the bucket. Remaining tasks=%d\n",
+			Myname, (nMsgCount - 1));
+	temp = temp->next;
+	MBucketHead = temp;
+	nMsgCount--;
+}
 }
