@@ -1,9 +1,9 @@
-TOPDIR = .
-CC = gcc
-
-main: $(TOPDIR)/projb.c $(TOPDIR)/projb.h $(TOPDIR)/manager.c $(TOPDIR)/manager.h $(TOPDIR)/client.c $(TOPDIR)/client.h $(TOPDIR)/comm.h $(TOPDIR)/comm.c $(TOPDIR)/sha1.h $(TOPDIR)/sha1.c $(TOPDIR)/log.h $(TOPDIR)/log.c $(TOPDIR)/ring.h $(TOPDIR)/ring.c
-	$(CC) -Wall $(TOPDIR)/projb.c $(TOPDIR)/manager.c $(TOPDIR)/client.c $(TOPDIR)/comm.c $(TOPDIR)/sha1.c $(TOPDIR)/log.c $(TOPDIR)/ring.c -o $(TOPDIR)/projc
-
+all: timer main
+	g++ -o projc projb.o manager.o client.o comm.o sha1.o log.o ring.o timers-c.o timers.o tools.o
+timer:
+	gcc -c -Wall timers-c.cc timers.cc tools.cc
+main:
+	gcc -c -Wall projb.c manager.c client.c comm.c sha1.c log.c ring.c
+	
 clean:
 	rm -rf projc *.o *.out
-

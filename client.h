@@ -20,20 +20,20 @@
  *
  */
 
-
 // File name:   client.h
 // Author:    Xun Fan (xunfan@usc.edu)
 // Date:    2011.8
 // Description: CSCI551 fall 2011 project b, client module header file.
-
 #ifndef _CLIENT_H
 #define _CLIENT_H
 
+#include <netinet/in.h>
+
 // Triadnode
-typedef struct TriadNode{
-  unsigned int id;
-  unsigned short port;
-}TNode;
+typedef struct TriadNode {
+	unsigned int id;
+	unsigned short port;
+} TNode;
 
 // message type
 #define SUCCQ 1
@@ -55,6 +55,7 @@ typedef struct TriadNode{
 #define HDPRR	32
 
 #define MAX_TEXT_SIZE 96
+#define MAX_MSG_SIZE	128
 
 #define HASHMAX 0xFFFFFFFF
 
@@ -64,124 +65,125 @@ typedef struct TriadNode{
 #define FTLEN 33
 
 // Triad messages
-typedef struct ngbrquerymsg{  // for successor query and predecessor query
-  int msgid;
-  unsigned int  ni;
-}NGQM, *pngqm;
+typedef struct ngbrquerymsg {  // for successor query and predecessor query
+	int msgid;
+	unsigned int ni;
+} NGQM, *pngqm;
 
-typedef struct ngbrreplymsg{  // for successor reply and predecessor reply
-  int msgid;
-  unsigned int  ni;
-  unsigned int  si;
-  int sp;
-}NGRM, *pngrm;
+typedef struct ngbrreplymsg {  // for successor reply and predecessor reply
+	int msgid;
+	unsigned int ni;
+	unsigned int si;
+	int sp;
+} NGRM, *pngrm;
 
-typedef struct clstquerymsg{
-  int   msgid;
-  unsigned int  ni;
-  unsigned int  di;
-}CLQM, *pclqm;
+typedef struct clstquerymsg {
+	int msgid;
+	unsigned int ni;
+	unsigned int di;
+} CLQM, *pclqm;
 
-typedef struct clstreplymsg{
-  int msgid;
-  unsigned int  ni;
-  unsigned int  di;
-  unsigned int  ri;
-  int rp;
-  int nhas;
-}CLRM, *pclrm;
+typedef struct clstreplymsg {
+	int msgid;
+	unsigned int ni;
+	unsigned int di;
+	unsigned int ri;
+	int rp;
+	int nhas;
+} CLRM, *pclrm;
 
+typedef struct updtquerymsg {
+	int msgid;
+	unsigned int ni;
+	unsigned int si;
+	int sp;
+	int i;
+} UPQM, *pupqm;
 
-typedef struct updtquerymsg{
-  int msgid;
-  unsigned int  ni;
-  unsigned int  si;
-  int sp;
-  int i;
-}UPQM, *pupqm;
+typedef struct storquerymsg {
+	int msgid;
+	unsigned int ni;
+	int sl;
+} STQM, *pstqm;
 
-typedef struct storquerymsg{
-  int   msgid;
-  unsigned int  ni;
-  int sl;
-}STQM, *pstqm;
+typedef struct storreplymsg {
+	int msgid;
+	unsigned int ni;
+	int r;
+	int sl;
+} STRM, *pstrm;
 
-typedef struct storreplymsg{
-  int msgid;
-  unsigned int  ni;
-  int r;
-  int sl;
-}STRM, *pstrm;
+typedef struct updtreplymsg {
+	int msgid;
+	unsigned int ni;
+	int r;
+	unsigned int si;
+	int sp;
+	int i;
+} UPRM, *puprm;
 
-typedef struct updtreplymsg{
-  int msgid;
-  unsigned int  ni;
-  int       r;
-  unsigned int  si;
-  int sp;
-  int i;
-}UPRM, *puprm;
+typedef struct leavquerymsg {
+	int msgid;
+	unsigned int ni;
+	unsigned int di;
+} LEQM, *pleqm;
 
-typedef struct leavquerymsg{
-  int msgid;
-  unsigned int ni;
-  unsigned int di;
-}LEQM, *pleqm;
+typedef struct leavreplymsg {
+	int msgid;
+	unsigned int ni;
+} LERM, *plerm;
 
-typedef struct leavreplymsg{
-  int msgid;
-  unsigned int ni;
-}LERM, *plerm;
+typedef struct nxtdquerymsg {
+	int msgid;
+	unsigned int di;
+	unsigned int id;
+} NXQM, *pnxqm;
 
-typedef struct nxtdquerymsg{
-  int msgid;
-  unsigned int di;
-  unsigned int id;
-}NXQM, *pnxqm;
-
-typedef struct nxtdreplymsg{
-  int msgid;
-  unsigned int di;
-  unsigned int qid;
-  unsigned int rid;
-  int sl;
-}NXRM, *pnxrm;
+typedef struct nxtdreplymsg {
+	int msgid;
+	unsigned int di;
+	unsigned int qid;
+	unsigned int rid;
+	int sl;
+} NXRM, *pnxrm;
 
 /*
  * Handle predecessor query and response messages
  */
-typedef struct handlepredquerymsg{
+typedef struct handlepredquerymsg {
 	int msgid;
 	unsigned int ni;
-}HPQM, *phpqm;
+} HPQM, *phpqm;
 
-typedef struct handlepredreplymsg{
+typedef struct handlepredreplymsg {
 	int msgid;
 	unsigned int ni;
 	unsigned int pi;
 	int pp;
-}HPRM, *phprm;
+} HPRM, *phprm;
 
-typedef struct ClientStore
-{
-  char txt[MAX_TEXT_SIZE];
-  unsigned int id;  // hash id of the str
-  struct ClientStore *next;
-}CSTORE, *pCStore;
+typedef struct ClientStore {
+	char txt[MAX_TEXT_SIZE];
+	unsigned int id;  // hash id of the str
+	struct ClientStore *next;
+} CSTORE, *pCStore;
 
 // finger table structure, one direction ring
-typedef struct FingerTableNode
-{
-  unsigned int  start;
-  unsigned int  end;
-  TNode   node;
-}FTNODE;
+typedef struct FingerTableNode {
+	unsigned int start;
+	unsigned int end;
+	TNode node;
+} FTNODE;
 
-
-
+typedef struct MsgBucket{
+	int msgid;
+	char msg[MAX_MSG_SIZE];
+	struct MsgBucket *next;
+}MBUCKET, *pMBucket;
 
 int client(int mgrport);
-int GetInitInfo(int sock, char *selfname, char *firstnode, unsigned int *nonce, unsigned short *port);
+int GetInitInfo(int sock, char *selfname, char *firstnode, unsigned int *nonce,
+		unsigned short *port);
 int JoinRing(int sock);
 int FindNeighbor(int sock, int msgtype, TNode na, TNode *pnb);
 void LogTyiadMsg(int type, int sorr, char *buf);
@@ -190,7 +192,8 @@ int HandleUdpMessage(int sock);
 int HandleStoreMsg(int sock, char *str);
 int HandleSearchMsg(int sock, char *str);
 int SearchClientStore(unsigned int id, char *str);
-int FindClosest(int sock, int msgt, unsigned int targetid, TNode na, TNode *pnb);
+int FindClosest(int sock, int msgt, unsigned int targetid, TNode na,
+		TNode *pnb);
 void InitFingerTableSelf();
 int InitFingerTable(int sock);
 int FindSuccWithFT(int sock, unsigned int id, TNode *retnode);
@@ -207,8 +210,12 @@ int HandleEndClient(int sock);
 int LeaveUpdateNeighbor(int sock, TNode *chgpreNode, TNode *chgsucNode);
 
 void AddClientStore(unsigned int id, char *str);
+void AddToMesgBucket(char* str);
+
+int HandleHelloPredecessorMsg(int sock, TNode ta);
 
 // debug only
 void LogFingerTable();
 void logNodeInfo();
+void processMsgBucket(int sock, struct sockaddr_in naaddr);
 #endif

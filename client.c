@@ -42,6 +42,7 @@
 #include "comm.h"
 #include "log.h"
 #include "ring.h"
+#include "timers-c.h"
 
 #define UPDATE_PRED_INDEX 100
 
@@ -54,7 +55,9 @@ char FirstNodeName[MAX_CLIENT_NAME_SIZE] = { 0 };
 unsigned int nMgrNonce = 0;
 
 pCStore CStoreHead = NULL;  // client stored string stack head
+pMBucket MBucketHead = NULL; //head of message bucket for this client
 int nCStore = 0;
+int nMsgCount = 0;
 
 FTNODE MyFT[FTLEN];  // finger table
 TNode succ; // successor node
@@ -62,6 +65,19 @@ TNode pred; // predecessor node
 TNode doublesucc; //double successor node
 
 char logfilename[256];
+
+/**
+ * This is the callback function called when the 10 second timer elapses
+ */
+int TestTimer2_expire(void *p) {
+	int sock = (int) p;
+	//printf("client : %s inside TestTimer2_expire() and myudpsock=%d\n", Myname,udpSock);
+	TNode mysucc;
+	mysucc.id = succ.id;
+	mysucc.port = succ.port;
+	HandleHelloPredecessorMsg(sock, mysucc);
+	return 0;
+}
 
 //
 // XXX Read and understand this function first!
@@ -101,7 +117,7 @@ int client(int mgrport) {
 
 	fd_set readset;
 	fd_set allset;
-	struct timeval tv;
+	//struct timeval tv;
 
 	// Create socket
 	if ((nSockwkr = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
@@ -195,6 +211,11 @@ int client(int mgrport) {
 			return -1;
 
 		}
+		/*//for testing only
+		 TNode su;
+		 su.id = succ.id;
+		 su.port = succ.port;
+		 HandleHelloPredecessorMsg(udpSock, su);*/
 	}
 
 	// send information back to manager
@@ -209,9 +230,16 @@ int client(int mgrport) {
 		return -1;
 	}
 
+	//initialize the timer here
+	struct timeval tmv;
+	memset(&tmv, 0, sizeof(tmv));
+	int selval;
+	(void) Timers_AddTimer(REPAIR_TIMEOUT * 1000, TestTimer2_expire,
+			(void*) udpSock);
+
 	// use select to multiplex communication
-	tv.tv_sec = SELECT_TIMEOUT;
-	tv.tv_usec = 0;
+	/*tv.tv_sec = SELECT_TIMEOUT;
+	 tv.tv_usec = 0;*/
 	int sockMax;
 
 	FD_ZERO(&allset);
@@ -228,9 +256,26 @@ int client(int mgrport) {
 	// main select loop
 	while (1) {
 
+		//for the timer library
+		Timers_NextTimerTime(&tmv);
+		if (tmv.tv_sec == 0 && tmv.tv_usec == 0) {
+			// No Timer have been defined
+			printf("No Timer have been defined\n");
+			Timers_ExecuteNextTimer();
+			continue;
+		}
+		if (tmv.tv_sec == MAXVALUE && tmv.tv_usec == 0) {
+			//There are no timers in the event queue
+			printf("There are no timers in the event queue\n");
+			break;
+		}
+
 		readset = allset;
-		if (select(sockMax + 1, &readset, NULL, NULL, &tv) == -1) {
+		if ((selval = select(sockMax + 1, &readset, NULL, NULL, &tmv)) == -1) {
 			errexit("client select.\n");
+		} else if (selval == 0) {
+			//TODO handle message bucket here.
+			printf("client= %s time out occurred\n", Myname);
 		}
 
 		// handle messages from other clients over UDP
@@ -366,7 +411,6 @@ int client(int mgrport) {
 				snprintf(szSendbuf, sizeof(szSendbuf), "ok\n");
 				nSendlen = strlen(szSendbuf);
 
-				printf("client: %s sends back \"%s\"", Myname, szSendbuf);
 				if (SendStreamData(nSockwkr, szSendbuf, nSendlen) < 0) {
 					printf(
 							"projb worker %d error: send ok back to manager error! Exit!\n",
@@ -543,7 +587,7 @@ int JoinRingWithFingerTable(int sock) {
 			HashID);
 	logfilewriteline(logfilename, wbuf, strlen(wbuf));
 	/*******************For Debug only*/
-	logNodeInfo();
+	//logNodeInfo();
 	return 0;
 }
 
@@ -729,7 +773,7 @@ int UpdateOthers(int sock) {
 	}
 
 	/*******************For Debug only*/
-	logNodeInfo();
+	//logNodeInfo();
 	//update the predecessor's double successor with your successor's information
 	//and double predecessor's double successor with your information.
 	if (doublesucc.id != HashID) {
@@ -1651,7 +1695,30 @@ int HandleUdpMessage(int sock) {
 	}
 		break;
 	case HDPRQ: {
-		//TODO
+		LogTyiadMsg(HDPRQ, RECVFLAG, recvbuf);
+		HPQM *hpqm;
+
+		hpqm = (phpqm) recvbuf;
+
+		TNode mypred;
+		mypred.id = pred.id;
+		mypred.port = pred.port;
+		HPRM repmsg;
+		repmsg.msgid = htonl(HDPRR);
+		repmsg.ni = hpqm->ni;
+		repmsg.pi = htonl(mypred.id);
+		repmsg.pp = htonl(mypred.port);
+		memcpy(sendbuf, &repmsg, sizeof(HPRM));
+
+		if ((sendlen = sendto(sock, sendbuf, sizeof(HPRM), 0,
+				(struct sockaddr *) &cliaddr, sa_len)) != sizeof(HPRM)) {
+			printf(
+					"projb client %s error: HandleUdpMessage succ-q sendto ret %d, should send %u\n",
+					Myname, sendlen, sizeof(HPRM));
+			return -1;
+		}
+		LogTyiadMsg(HDPRR, SENTFLAG, sendbuf);
+
 	}
 		break;
 	default:  // should not happen
@@ -2399,6 +2466,33 @@ void AddClientStore(unsigned int id, char *str) {
 	}
 }
 
+/**
+ * add pending message to the message bucket
+ */
+void AddToMesgBucket(char* str) {
+	int *tmp = (int *) str;
+	int msgtype = ntohl(*tmp);
+	pMBucket temp;
+
+	if (MBucketHead == NULL) {
+		MBucketHead = (pMBucket) malloc(sizeof(MBUCKET));
+		MBucketHead->msgid = msgtype;
+		strncpy(MBucketHead->msg, str, MAX_MSG_SIZE);
+		MBucketHead->next = NULL;
+		nMsgCount = 1;
+	} else {
+		temp = (pMBucket) malloc(sizeof(MBUCKET));
+		temp->msgid = msgtype;
+		strncpy(temp->msg, str, MAX_MSG_SIZE);
+		temp->next = MBucketHead;
+		MBucketHead = temp;
+		nMsgCount++;
+	}
+
+	printf("Mohit-->%s: Adding message %d to bucket. Message count= %d\n",
+			Myname, msgtype, nMsgCount);
+}
+
 void LogTyiadMsg(int mtype, int sorr, char *buf) {
 	pngqm temp1;
 	pngrm temp2;
@@ -2573,11 +2667,26 @@ void LogTyiadMsg(int mtype, int sorr, char *buf) {
 	}
 		break;
 	case HDPRQ: {
-		//TODO
+		phpqm tempptr = (phpqm) buf;
+		ndi = ntohl(tempptr->ni);
+		buf[sizeof(HPQM)] = '\0';
+		snprintf(writebuf, sizeof(writebuf),
+				"hello-predecessor-q %s (0x%08x)\n", comtype, ndi);
+		logfilewriteline(logfilename, writebuf, strlen(writebuf));
+		msglen = sizeof(HPQM);
 	}
 		break;
 	case HDPRR: {
-		//TODO
+		phprm tempptr = (phprm) buf;
+		ndi = ntohl(tempptr->ni);
+		id = ntohl(tempptr->pi);
+		id2 = ntohl(tempptr->pp);
+		buf[sizeof(HPRM)] = '\0';
+		snprintf(writebuf, sizeof(writebuf),
+				"hello-predecessor-r %s (0x%08x 0x%08x %d)\n", comtype, ndi, id,
+				id2);
+		logfilewriteline(logfilename, writebuf, strlen(writebuf));
+		msglen = sizeof(HPRM);
 	}
 		break;
 	default:
@@ -2625,4 +2734,124 @@ void logNodeInfo() {
 			"Client: name=%s, hashid=0x%x, port=%d, predecessor(0x%x,%d), successor(0x%x,%d), double successor(0x%x,%d)\n",
 			Myname, HashID, MyUDPPort, pred.id, pred.port, succ.id, succ.port,
 			doublesucc.id, doublesucc.port);
+}
+
+/**
+ * This function will calculate the handle hello-predecessor query message
+ *
+ * @sock socket descriptor for this client
+ */
+int HandleHelloPredecessorMsg(int sock, TNode ta) {
+	struct sockaddr_in naaddr;
+	char sendbuf[128];
+	char recvbuf[128];
+	int nSendbytes, nRecvbytes;
+	HPQM hpmsg;
+
+	// first change someone's predecessor
+	naaddr.sin_family = AF_INET;
+	naaddr.sin_port = htons(ta.port);
+	naaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+	hpmsg.msgid = htonl(HDPRQ);
+	hpmsg.ni = htonl(ta.id);
+	memcpy(sendbuf, &hpmsg, sizeof(HPQM));
+
+	if ((nSendbytes = sendto(sock, sendbuf, sizeof(HPQM), 0,
+			(struct sockaddr *) &naaddr, sizeof(naaddr))) != sizeof(HPQM)) {
+		printf(
+				"projb error: HandleHelloPredecessorMsg sendto ret %d, should send %u\n",
+				nSendbytes, sizeof(HPQM));
+		return -1;
+	}
+
+	// log
+	LogTyiadMsg(HDPRQ, SENTFLAG, sendbuf);
+
+	// only receive reply after stage 4
+	if (nStage >= 2) {
+		// receive reply
+		/**********************************************************************
+		 *** for stage >= 6, needs to judge if the hello messages comes here ******
+		 **********************************************************************/
+		struct timeval tmv;
+		tmv.tv_sec = 2;
+		tmv.tv_usec = 0;
+
+		fd_set read_set;
+		FD_ZERO(&read_set);
+		FD_SET(sock, &read_set);
+
+		int status = select(sock + 1, &read_set, NULL, NULL, &tmv);
+		if (status > 0) {
+			if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(HPRM), 0, NULL,
+			NULL)) != sizeof(HPRM)) {
+				AddToMesgBucket(recvbuf);
+			} else {
+				LogTyiadMsg(HDPRR, RECVFLAG, recvbuf);
+
+				phprm hprm;
+				char writebuf[256];
+
+				hprm = (phprm) recvbuf;
+				if (HashID == ntohl(hprm->pi)) {
+					snprintf(writebuf, sizeof(writebuf),
+							"hello-predecessor-r confirms my successor's predecessor is me, 0x%08x.\n",
+							ntohl(hprm->ni));
+					logfilewriteline(logfilename, writebuf, strlen(writebuf));
+				} else {
+					//TODO handle other conditions
+				}
+			}
+		} else if (status == 0) {
+			processMsgBucket(sock, naaddr);
+		}
+
+	}
+
+	return 0;
+}
+
+/**
+ * This function processes the messages waiting in the message bucket
+ */
+void processMsgBucket(int sock, struct sockaddr_in naaddr) {
+	//printf("%s: Inside ProcessMsgBucket()\n", Myname);
+	socklen_t sa_len = sizeof(naaddr);
+	pMBucket temp = MBucketHead;
+	char sendbuf[MAX_MSG_SIZE];
+	int sendlen;
+	while (nMsgCount) {
+		char *recvbuf = temp->msg;
+		LogTyiadMsg(HDPRQ, RECVFLAG, recvbuf);
+		HPQM *hpqm;
+
+		hpqm = (phpqm) recvbuf;
+
+		TNode mypred;
+		mypred.id = pred.id;
+		mypred.port = pred.port;
+		HPRM repmsg;
+		repmsg.msgid = htonl(HDPRR);
+		repmsg.ni = hpqm->ni;
+		repmsg.pi = htonl(mypred.id);
+		repmsg.pp = htonl(mypred.port);
+		memcpy(sendbuf, &repmsg, sizeof(HPRM));
+
+		if ((sendlen = sendto(sock, sendbuf, sizeof(HPRM), 0,
+				(struct sockaddr *) &naaddr, sa_len)) != sizeof(HPRM)) {
+			printf(
+					"projb client %s error: HandleUdpMessage succ-q sendto ret %d, should send %u\n",
+					Myname, sendlen, sizeof(HPRM));
+			return;
+		}
+		LogTyiadMsg(HDPRR, SENTFLAG, sendbuf);
+
+		printf(
+				"Mohit--> %s: Processed one message from the bucket. Remaining tasks=%d\n",
+				Myname, (nMsgCount - 1));
+		temp = temp->next;
+		MBucketHead = temp;
+		nMsgCount--;
+	}
 }

@@ -411,12 +411,13 @@ int manager(void) {
 
 						if (prevJobWasKill) {
 							//remove the defunct client's tcp and udp sockets from the manager
-							FD_CLR(clientToKill->tcpsock,&sockset);
+							FD_CLR(clientToKill->tcpsock, &sockset);
 							close(clientToKill->tcpsock);
 							//sleep for 60 seconds before executing the next command
-							printf("manager: putting to sleep for %d\n",KILL_CLIENT_TIMEOUT);
+							printf("manager: putting to sleep for %d\n",
+									KILL_CLIENT_TIMEOUT);
 							sleep(KILL_CLIENT_TIMEOUT);
-							prevJobWasKill=0;
+							prevJobWasKill = 0;
 						}
 
 						szRecvbuf[nRecvbytes - 1] = '\0';
