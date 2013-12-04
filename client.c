@@ -2784,7 +2784,6 @@ int HandleHelloPredecessorMsg(int sock, TNode ta) {
 		FD_SET(sock, &read_set);
 
 		int status = select(sock + 1, &read_set, NULL, NULL, &tmv);
-		printf("Mohit----------> select() %d\n", status);
 		if (status > 0) {
 			if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(HPRM), 0, NULL,
 			NULL)) != sizeof(HPRM)) {
@@ -2793,9 +2792,10 @@ int HandleHelloPredecessorMsg(int sock, TNode ta) {
 				LogTyiadMsg(HDPRR, RECVFLAG, recvbuf);
 
 				phprm hprm;
-				unsigned int predID = ntohl(hprm->pi)
 
 				hprm = (phprm) recvbuf;
+				unsigned int predID = ntohl(hprm->pi);
+
 				if (HashID == predID) {
 					snprintf(writebuf, sizeof(writebuf),
 							"hello-predecessor-r confirms my successor's predecessor is me, 0x%08x.\n",
@@ -2807,18 +2807,22 @@ int HandleHelloPredecessorMsg(int sock, TNode ta) {
 							predID, HashID);
 					logfilewriteline(logfilename, writebuf, strlen(writebuf));
 
-				if(predID>HashID){
-					sprintf(writebuf,"hello-predecessor-r causes repair of my links\n");
-					logfilewriteline(logfilename, writebuf, strlen(writebuf));
-					//TODO correct its successor and finger table
-				}
+					if (predID > HashID) {
+						sprintf(writebuf,
+								"hello-predecessor-r causes repair of my links\n");
+						logfilewriteline(logfilename, writebuf,
+								strlen(writebuf));
+						//TODO correct its successor and finger table
+					}
 
-				if(predID<HashID){
-					sprintf(writebuf,"hello-predecessor-r causes me to repair my successor's predecessor\n");
-					logfilewriteline(logfilename, writebuf, strlen(writebuf));
-					//TODO It should then cause its successor to correctly rebuild its predecessor link by
-					//sending it an update-q message where i = 0.
-				}
+					if (predID < HashID) {
+						sprintf(writebuf,
+								"hello-predecessor-r causes me to repair my successor's predecessor\n");
+						logfilewriteline(logfilename, writebuf,
+								strlen(writebuf));
+						//TODO It should then cause its successor to correctly rebuild its predecessor link by
+						//sending it an update-q message where i = 0.
+					}
 			}
 		}
 	} else if (status == 0) {
