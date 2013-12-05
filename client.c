@@ -35,6 +35,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <arpa/inet.h>
+#include <time.h>
 
 #include "projb.h"
 #include "client.h"
@@ -149,7 +150,7 @@ int client(int mgrport) {
 
 	fd_set readset;
 	fd_set allset;
-	//struct timeval tv;
+	struct timeval tv;
 
 	// Create socket
 	if ((nSockwkr = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
@@ -243,11 +244,6 @@ int client(int mgrport) {
 			return -1;
 
 		}
-		/*//for testing only
-		 TNode su;
-		 su.id = succ.id;
-		 su.port = succ.port;
-		 HandleHelloPredecessorMsg(udpSock, su);*/
 	}
 
 	// send information back to manager
@@ -270,8 +266,8 @@ int client(int mgrport) {
 			(void*) udpSock);
 
 	// use select to multiplex communication
-	/*tv.tv_sec = SELECT_TIMEOUT;
-	 tv.tv_usec = 0;*/
+	tv.tv_sec = REPAIR_TIMEOUT;//SELECT_TIMEOUT;
+	tv.tv_usec = 0;
 	int sockMax;
 
 	FD_ZERO(&allset);
@@ -301,11 +297,8 @@ int client(int mgrport) {
 		}
 
 		readset = allset;
-		if ((selval = select(sockMax + 1, &readset, NULL, NULL, &tmv)) == -1) {
+		if ((selval = select(sockMax + 1, &readset, NULL, NULL, &tv)) == -1) {
 			errexit("client select.\n");
-		} else if (selval == 0) {
-			//TODO handle message bucket here.
-			printf("client= %s main select time out occurred\n", Myname);
 		}
 
 		// handle messages from other clients over UDP
@@ -951,7 +944,11 @@ int FindNeighbor(int sock, int msgtype, TNode na, TNode *pnb) {
 		int *tmp = (int *) recvbuf;
 		int msgtype = ntohl(*tmp);
 		if (msgtype != 31) {
-			AddToMesgBucket(recvbuf);
+			printf(
+					"projb error: find_neighbor recvfrom ret %d, should recv %u\n",
+					nRecvbytes, sizeof(NGRM));
+			return -1;
+			//AddToMesgBucket(recvbuf);
 		} else {
 			processHelloPredecessorMsg(sock, recvbuf, naaddr);
 		}
@@ -1099,7 +1096,11 @@ int sendUpdateQuery(int sock, TNode *node, int x) {
 			int *tmp = (int *) recvbuf;
 			int msgtype = ntohl(*tmp);
 			if (msgtype != 31) {
-				AddToMesgBucket(recvbuf);
+				//AddToMesgBucket(recvbuf);
+				printf(
+						"projb error: update_neighbor recvfrom ret %d, should recv %u\n",
+						nRecvbytes, sizeof(UPRM));
+				return -1;
 			} else {
 				processHelloPredecessorMsg(sock, recvbuf, naaddr);
 			}
@@ -1163,7 +1164,11 @@ int UpdateFingerTable(int sock, TNode tn, TNode sn, int idx) {
 		int *tmp = (int *) recvbuf;
 		int msgtype = ntohl(*tmp);
 		if (msgtype != 31) {
-			AddToMesgBucket(recvbuf);
+			//AddToMesgBucket(recvbuf);
+			printf(
+					"projb error: UpdateFingerTable recvfrom ret %d, should recv %u\n",
+					nRecvbytes, sizeof(UPRM));
+			return -1;
 		} else {
 			processHelloPredecessorMsg(sock, recvbuf, naaddr);
 		}
@@ -2784,6 +2789,8 @@ int HandleHelloPredecessorMsg(int sock, TNode ta) {
 	tmv.tv_sec = 2;
 	tmv.tv_usec = 0;
 
+	time_t start, end;
+
 	struct sockaddr_in srcaddr;
 	socklen_t len = sizeof(srcaddr);
 
@@ -2791,54 +2798,72 @@ int HandleHelloPredecessorMsg(int sock, TNode ta) {
 	FD_ZERO(&read_set);
 	FD_SET(sock, &read_set);
 
-	int status = select(sock + 1, &read_set, NULL, NULL, &tmv);
-	if (status > 0) {
-		if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(HPRM), 0,
-				(struct sockaddr *)&srcaddr, &len)) != sizeof(HPRM)) {
-			int *tmp = (int *) recvbuf;
-			int msgtype = ntohl(*tmp);
-			if (msgtype != 31) {
-				AddToMesgBucket(recvbuf);
-			} else {
-				//process the hello predecessor q message instantly
-				processHelloPredecessorMsg(sock, recvbuf, srcaddr);
-			}
-		} else {
-			LogTyiadMsg(HDPRR, RECVFLAG, recvbuf);
-
-			phprm hprm;
-
-			hprm = (phprm) recvbuf;
-			unsigned int predID = ntohl(hprm->pi);
-
-			if (HashID == predID) {
-				snprintf(writebuf, sizeof(writebuf),
-						"hello-predecessor-r confirms my successor's predecessor is me, 0x%08x.\n",
-						predID);
-				logfilewriteline(logfilename, writebuf, strlen(writebuf));
-			} else {
-				sprintf(writebuf,
-						"hello-predecessor-r reports my successor's predecessor is 0x%08x, not me 0x%08x.\n",
-						predID, HashID);
-				logfilewriteline(logfilename, writebuf, strlen(writebuf));
-
-				if (predID > HashID) {
-					sprintf(writebuf,
-							"hello-predecessor-r causes repair of my links\n");
-					logfilewriteline(logfilename, writebuf, strlen(writebuf));
-					//TODO correct its successor and finger table
-				}
-
-				if (predID < HashID) {
-					sprintf(writebuf,
-							"hello-predecessor-r causes me to repair my successor's predecessor\n");
-					logfilewriteline(logfilename, writebuf, strlen(writebuf));
-					//TODO It should then cause its successor to correctly rebuild its predecessor link by
-					//sending it an update-q message where i = 0.
-				}
-			}
+	int status, flag = 0;
+	time(&start);
+	while (1) {
+		status = select(sock + 1, &read_set, NULL, NULL, &tmv);
+		time(&end);
+		if (difftime(end, start) > 2.0) {
+			flag = 1;
+			break;
 		}
-	} else if (status == 0) {
+		if (status > 0) {
+			if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(HPRM), 0,
+					(struct sockaddr *) &srcaddr, &len)) != sizeof(HPRM)) {
+				int *tmp = (int *) recvbuf;
+				int msgtype = ntohl(*tmp);
+
+				if (msgtype != 31) {
+					AddToMesgBucket(recvbuf);
+				} else {
+					//process the hello predecessor q message instantly
+					processHelloPredecessorMsg(sock, recvbuf, srcaddr);
+				}
+			} else {
+				LogTyiadMsg(HDPRR, RECVFLAG, recvbuf);
+
+				phprm hprm;
+
+				hprm = (phprm) recvbuf;
+				unsigned int predID = ntohl(hprm->pi);
+
+				if (HashID == predID) {
+					snprintf(writebuf, sizeof(writebuf),
+							"hello-predecessor-r confirms my successor's predecessor is me, 0x%08x.\n",
+							predID);
+					logfilewriteline(logfilename, writebuf, strlen(writebuf));
+				} else {
+					sprintf(writebuf,
+							"hello-predecessor-r reports my successor's predecessor is 0x%08x, not me 0x%08x.\n",
+							predID, HashID);
+					logfilewriteline(logfilename, writebuf, strlen(writebuf));
+
+					if (predID > HashID) {
+						sprintf(writebuf,
+								"hello-predecessor-r causes repair of my links\n");
+						logfilewriteline(logfilename, writebuf,
+								strlen(writebuf));
+						//TODO correct its successor and finger table
+					}
+
+					if (predID < HashID) {
+						sprintf(writebuf,
+								"hello-predecessor-r causes me to repair my successor's predecessor\n");
+						logfilewriteline(logfilename, writebuf,
+								strlen(writebuf));
+						//TODO It should then cause its successor to correctly rebuild its predecessor link by
+						//sending it an update-q message where i = 0.
+					}
+				}
+				break;
+			}
+		} else if (status == 0 || difftime(end, start) > 2.0) {
+			flag = 1;
+			break;
+		}
+	}
+
+	if (flag == 1) {
 		printf("client= %s hello-pred-q select time out occurred\n", Myname);
 		sprintf(writebuf,
 				"hello-predecessor-r non-reply: my successor is non-responsive\n");
@@ -2858,7 +2883,7 @@ int HandleHelloPredecessorMsg(int sock, TNode ta) {
  * This function rebuilds the ring on the exit of a node.
  */
 int ReBuildtheRing(int sock, struct sockaddr_in naaddr) {
-	//rebuild the ring
+//rebuild the ring
 	/*
 	 * It will need to use update-q to correct its double-successor's predecessor, and
 	 * correct it's successor and double successor, and confirm and correct its finger table.
@@ -2893,12 +2918,12 @@ int ReBuildtheRing(int sock, struct sockaddr_in naaddr) {
 		return -1;
 	}
 
-	//TODO update the finger table
+//TODO update the finger table
 
-	//process the pending messages in the bucket
+//process the pending messages in the bucket
 	processMsgBucket(sock, naaddr);
 
-	//TODO notify other nodes about the failure and prompt them to update their finger tables
+//TODO notify other nodes about the failure and prompt them to update their finger tables
 
 	return 0;
 }
