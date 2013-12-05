@@ -210,7 +210,7 @@ int HandleEndClient(int sock);
 int LeaveUpdateNeighbor(int sock, TNode *chgpreNode, TNode *chgsucNode);
 
 void AddClientStore(unsigned int id, char *str);
-void AddToMesgBucket(char* str);
+int AddToMesgBucket(char* str);
 
 int HandleHelloPredecessorMsg(int sock, TNode ta);
 
@@ -218,4 +218,6 @@ int HandleHelloPredecessorMsg(int sock, TNode ta);
 void LogFingerTable();
 void logNodeInfo();
 void processMsgBucket(int sock, struct sockaddr_in naaddr);
+
+int ReBuildtheRing(int sock, struct sockaddr_in naaddr);
 #endif

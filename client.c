@@ -79,6 +79,38 @@ int TestTimer2_expire(void *p) {
 	return 0;
 }
 
+void processHelloPredecessorMsg(int sock, char *recvbuf,
+		struct sockaddr_in naaddr) {
+	char sendbuf[MAX_MSG_SIZE];
+	int sendlen;
+	socklen_t sa_len = sizeof(naaddr);
+
+	LogTyiadMsg(HDPRQ, RECVFLAG, recvbuf);
+	HPQM *hpqm;
+
+	hpqm = (phpqm) recvbuf;
+
+	TNode mypred;
+	mypred.id = pred.id;
+	mypred.port = pred.port;
+	HPRM repmsg;
+	repmsg.msgid = htonl(HDPRR);
+	repmsg.ni = hpqm->ni;
+	repmsg.pi = htonl(mypred.id);
+	repmsg.pp = htonl(mypred.port);
+	memcpy(sendbuf, &repmsg, sizeof(HPRM));
+
+	if ((sendlen = sendto(sock, sendbuf, sizeof(HPRM), 0,
+			(struct sockaddr *) &naaddr, sa_len)) != sizeof(HPRM)) {
+		printf(
+				"projb client %s error: processHelloPredecessorMsg -q sendto ret %d, should send %u\n",
+				Myname, sendlen, sizeof(HPRM));
+		return;
+	}
+	LogTyiadMsg(HDPRR, SENTFLAG, sendbuf);
+
+}
+
 //
 // XXX Read and understand this function first!
 // 
@@ -260,13 +292,11 @@ int client(int mgrport) {
 		Timers_NextTimerTime(&tmv);
 		if (tmv.tv_sec == 0 && tmv.tv_usec == 0) {
 			// No Timer have been defined
-			printf("No Timer have been defined\n");
 			Timers_ExecuteNextTimer();
 			continue;
 		}
 		if (tmv.tv_sec == MAXVALUE && tmv.tv_usec == 0) {
 			//There are no timers in the event queue
-			printf("There are no timers in the event queue\n");
 			break;
 		}
 
@@ -275,7 +305,7 @@ int client(int mgrport) {
 			errexit("client select.\n");
 		} else if (selval == 0) {
 			//TODO handle message bucket here.
-			printf("client= %s time out occurred\n", Myname);
+			printf("client= %s main select time out occurred\n", Myname);
 		}
 
 		// handle messages from other clients over UDP
@@ -429,6 +459,7 @@ int client(int mgrport) {
 	close(nSockwkr);
 	close(udpSock);
 
+	exit(1);
 	return 0;
 }
 
@@ -914,25 +945,33 @@ int FindNeighbor(int sock, int msgtype, TNode na, TNode *pnb) {
 	 **********************************************************************/
 	if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(NGRM), 0, NULL, NULL))
 			!= sizeof(NGRM)) {
-		printf("projb error: find_neighbor recvfrom ret %d, should recv %u\n",
-				nRecvbytes, sizeof(NGRM));
-		return -1;
+		/*printf("projb error: find_neighbor recvfrom ret %d, should recv %u\n",
+		 nRecvbytes, sizeof(NGRM));
+		 return -1;*/
+		int *tmp = (int *) recvbuf;
+		int msgtype = ntohl(*tmp);
+		if (msgtype != 31) {
+			AddToMesgBucket(recvbuf);
+		} else {
+			processHelloPredecessorMsg(sock, recvbuf, naaddr);
+		}
+	} else {
+		// wirte log
+		LogTyiadMsg((msgtype + 1), RECVFLAG, recvbuf);
+
+		//parse data
+		pngr = (pngrm) recvbuf;
+		// sanity check
+		if ((msgtype + 1) != ntohl(pngr->msgid) || na.id != ntohl(pngr->ni)) {
+			printf(
+					"projb error: find_neighbor recv ngr msg %d %d, ni %08x %08x\n",
+					msgtype, ntohl(pngr->msgid), na.id, ntohl(pngr->ni));
+			return -1;
+		}
+
+		pnb->id = ntohl(pngr->si);
+		pnb->port = ntohl(pngr->sp);
 	}
-
-	// wirte log
-	LogTyiadMsg((msgtype + 1), RECVFLAG, recvbuf);
-
-	//parse data
-	pngr = (pngrm) recvbuf;
-	// sanity check
-	if ((msgtype + 1) != ntohl(pngr->msgid) || na.id != ntohl(pngr->ni)) {
-		printf("projb error: find_neighbor recv ngr msg %d %d, ni %08x %08x\n",
-				msgtype, ntohl(pngr->msgid), na.id, ntohl(pngr->ni));
-		return -1;
-	}
-
-	pnb->id = ntohl(pngr->si);
-	pnb->port = ntohl(pngr->sp);
 
 	return 0;
 }
@@ -1015,7 +1054,8 @@ int FindSuccWithFT(int sock, unsigned int id, TNode *retnode) {
 	return 0;
 }
 
-int UpdateNeighbor(int sock, TNode *chgpreNode, TNode *chgsucNode) {
+//further modularize the update neighbor messages
+int sendUpdateQuery(int sock, TNode *node, int x) {
 	struct sockaddr_in naaddr;
 	char sendbuf[128];
 	char recvbuf[128];
@@ -1024,14 +1064,14 @@ int UpdateNeighbor(int sock, TNode *chgpreNode, TNode *chgsucNode) {
 
 	// first change someone's predecessor
 	naaddr.sin_family = AF_INET;
-	naaddr.sin_port = htons(chgpreNode->port);
+	naaddr.sin_port = htons(node->port);
 	naaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
 	updmsg.msgid = htonl(UPDTQ);
-	updmsg.ni = htonl(chgpreNode->id);
+	updmsg.ni = htonl(node->id);
 	updmsg.si = htonl(HashID);
 	updmsg.sp = htonl((int) MyUDPPort);
-	updmsg.i = htonl(0); // change predecessor
+	updmsg.i = htonl(x); // change predecessor
 	memcpy(sendbuf, &updmsg, sizeof(UPQM));
 
 	if ((nSendbytes = sendto(sock, sendbuf, sizeof(UPQM), 0,
@@ -1052,47 +1092,32 @@ int UpdateNeighbor(int sock, TNode *chgpreNode, TNode *chgsucNode) {
 		 **********************************************************************/
 		if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(UPRM), 0, NULL, NULL))
 				!= sizeof(UPRM)) {
-			printf(
-					"projb error: update_neighbor recvfrom ret %d, should recv %u\n",
-					nRecvbytes, sizeof(UPRM));
-			return -1;
+			/*printf(
+			 "projb error: update_neighbor recvfrom ret %d, should recv %u\n",
+			 nRecvbytes, sizeof(UPRM));
+			 return -1;*/
+			int *tmp = (int *) recvbuf;
+			int msgtype = ntohl(*tmp);
+			if (msgtype != 31) {
+				AddToMesgBucket(recvbuf);
+			} else {
+				processHelloPredecessorMsg(sock, recvbuf, naaddr);
+			}
+		} else {
+			LogTyiadMsg(UPDTR, RECVFLAG, recvbuf);
 		}
-		LogTyiadMsg(UPDTR, RECVFLAG, recvbuf);
 	}
+	return 0;
+}
 
-	// then, update someone's successor
-	naaddr.sin_port = htons(chgsucNode->port);
-
-	updmsg.ni = htonl(chgsucNode->id);
-	updmsg.i = htonl(1); // update successor
-	memset(sendbuf, 0, sizeof(sendbuf));
-	memcpy(sendbuf, &updmsg, sizeof(UPQM));
-
-	if ((nSendbytes = sendto(sock, sendbuf, sizeof(UPQM), 0,
-			(struct sockaddr *) &naaddr, sizeof(naaddr))) != sizeof(UPQM)) {
-		printf("projb error: update_neighbor sendto ret %d, should send %u\n",
-				nSendbytes, sizeof(UPQM));
+int UpdateNeighbor(int sock, TNode *chgpreNode, TNode *chgsucNode) {
+	if (sendUpdateQuery(sock, chgpreNode, 0) < 0) {
 		return -1;
 	}
 
-	// log
-	LogTyiadMsg(UPDTQ, SENTFLAG, sendbuf);
-
-	if (nStage >= 2) {
-		// receive reply
-		/**********************************************************************
-		 *** for stage >= 6, needs to judge if the hello messages comes here ******
-		 **********************************************************************/
-		if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(UPRM), 0, NULL, NULL))
-				!= sizeof(UPRM)) {
-			printf(
-					"projb error: update_neighbor recvfrom ret %d, should recv %u\n",
-					nRecvbytes, sizeof(UPRM));
-			return -1;
-		}
-		LogTyiadMsg(UPDTR, RECVFLAG, recvbuf);
+	if (sendUpdateQuery(sock, chgsucNode, 1) < 0) {
+		return -1;
 	}
-
 	return 0;
 }
 
@@ -1131,10 +1156,17 @@ int UpdateFingerTable(int sock, TNode tn, TNode sn, int idx) {
 	 **********************************************************************/
 	if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(UPRM), 0, NULL, NULL))
 			!= sizeof(UPRM)) {
-		printf(
-				"projb error: UpdateFingerTable recvfrom ret %d, should recv %u\n",
-				nRecvbytes, sizeof(UPRM));
-		return -1;
+		/*printf(
+		 "projb error: UpdateFingerTable recvfrom ret %d, should recv %u\n",
+		 nRecvbytes, sizeof(UPRM));
+		 return -1;*/
+		int *tmp = (int *) recvbuf;
+		int msgtype = ntohl(*tmp);
+		if (msgtype != 31) {
+			AddToMesgBucket(recvbuf);
+		} else {
+			processHelloPredecessorMsg(sock, recvbuf, naaddr);
+		}
 	}
 
 	// sanity check
@@ -1695,30 +1727,7 @@ int HandleUdpMessage(int sock) {
 	}
 		break;
 	case HDPRQ: {
-		LogTyiadMsg(HDPRQ, RECVFLAG, recvbuf);
-		HPQM *hpqm;
-
-		hpqm = (phpqm) recvbuf;
-
-		TNode mypred;
-		mypred.id = pred.id;
-		mypred.port = pred.port;
-		HPRM repmsg;
-		repmsg.msgid = htonl(HDPRR);
-		repmsg.ni = hpqm->ni;
-		repmsg.pi = htonl(mypred.id);
-		repmsg.pp = htonl(mypred.port);
-		memcpy(sendbuf, &repmsg, sizeof(HPRM));
-
-		if ((sendlen = sendto(sock, sendbuf, sizeof(HPRM), 0,
-				(struct sockaddr *) &cliaddr, sa_len)) != sizeof(HPRM)) {
-			printf(
-					"projb client %s error: HandleUdpMessage succ-q sendto ret %d, should send %u\n",
-					Myname, sendlen, sizeof(HPRM));
-			return -1;
-		}
-		LogTyiadMsg(HDPRR, SENTFLAG, sendbuf);
-
+		processHelloPredecessorMsg(sock, recvbuf, cliaddr);
 	}
 		break;
 	default:  // should not happen
@@ -2469,7 +2478,7 @@ void AddClientStore(unsigned int id, char *str) {
 /**
  * add pending message to the message bucket
  */
-void AddToMesgBucket(char* str) {
+int AddToMesgBucket(char* str) {
 	int *tmp = (int *) str;
 	int msgtype = ntohl(*tmp);
 	pMBucket temp;
@@ -2491,6 +2500,7 @@ void AddToMesgBucket(char* str) {
 
 	printf("Mohit-->%s: Adding message %d to bucket. Message count= %d\n",
 			Myname, msgtype, nMsgCount);
+	return msgtype;
 }
 
 void LogTyiadMsg(int mtype, int sorr, char *buf) {
@@ -2769,72 +2779,128 @@ int HandleHelloPredecessorMsg(int sock, TNode ta) {
 	LogTyiadMsg(HDPRQ, SENTFLAG, sendbuf);
 
 	// only receive reply after stage 4
-	if (nStage >= 2) {
-		char writebuf[256];
-		// receive reply
-		/**********************************************************************
-		 *** for stage >= 6, needs to judge if the hello messages comes here ******
-		 **********************************************************************/
-		struct timeval tmv;
-		tmv.tv_sec = 2;
-		tmv.tv_usec = 0;
+	char writebuf[256];
+	struct timeval tmv;
+	tmv.tv_sec = 2;
+	tmv.tv_usec = 0;
 
-		fd_set read_set;
-		FD_ZERO(&read_set);
-		FD_SET(sock, &read_set);
+	struct sockaddr_in srcaddr;
+	socklen_t len = sizeof(srcaddr);
 
-		int status = select(sock + 1, &read_set, NULL, NULL, &tmv);
-		if (status > 0) {
-			if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(HPRM), 0, NULL,
-			NULL)) != sizeof(HPRM)) {
+	fd_set read_set;
+	FD_ZERO(&read_set);
+	FD_SET(sock, &read_set);
+
+	int status = select(sock + 1, &read_set, NULL, NULL, &tmv);
+	if (status > 0) {
+		if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(HPRM), 0,
+				(struct sockaddr *)&srcaddr, &len)) != sizeof(HPRM)) {
+			int *tmp = (int *) recvbuf;
+			int msgtype = ntohl(*tmp);
+			if (msgtype != 31) {
 				AddToMesgBucket(recvbuf);
 			} else {
-				LogTyiadMsg(HDPRR, RECVFLAG, recvbuf);
+				//process the hello predecessor q message instantly
+				processHelloPredecessorMsg(sock, recvbuf, srcaddr);
+			}
+		} else {
+			LogTyiadMsg(HDPRR, RECVFLAG, recvbuf);
 
-				phprm hprm;
+			phprm hprm;
 
-				hprm = (phprm) recvbuf;
-				unsigned int predID = ntohl(hprm->pi);
+			hprm = (phprm) recvbuf;
+			unsigned int predID = ntohl(hprm->pi);
 
-				if (HashID == predID) {
-					snprintf(writebuf, sizeof(writebuf),
-							"hello-predecessor-r confirms my successor's predecessor is me, 0x%08x.\n",
-							predID);
-					logfilewriteline(logfilename, writebuf, strlen(writebuf));
-				} else {
+			if (HashID == predID) {
+				snprintf(writebuf, sizeof(writebuf),
+						"hello-predecessor-r confirms my successor's predecessor is me, 0x%08x.\n",
+						predID);
+				logfilewriteline(logfilename, writebuf, strlen(writebuf));
+			} else {
+				sprintf(writebuf,
+						"hello-predecessor-r reports my successor's predecessor is 0x%08x, not me 0x%08x.\n",
+						predID, HashID);
+				logfilewriteline(logfilename, writebuf, strlen(writebuf));
+
+				if (predID > HashID) {
 					sprintf(writebuf,
-							"hello-predecessor-r reports my successor's predecessor is 0x%08x, not me 0x%08x.\n",
-							predID, HashID);
+							"hello-predecessor-r causes repair of my links\n");
 					logfilewriteline(logfilename, writebuf, strlen(writebuf));
+					//TODO correct its successor and finger table
+				}
 
-					if (predID > HashID) {
-						sprintf(writebuf,
-								"hello-predecessor-r causes repair of my links\n");
-						logfilewriteline(logfilename, writebuf,
-								strlen(writebuf));
-						//TODO correct its successor and finger table
-					}
-
-					if (predID < HashID) {
-						sprintf(writebuf,
-								"hello-predecessor-r causes me to repair my successor's predecessor\n");
-						logfilewriteline(logfilename, writebuf,
-								strlen(writebuf));
-						//TODO It should then cause its successor to correctly rebuild its predecessor link by
-						//sending it an update-q message where i = 0.
-					}
+				if (predID < HashID) {
+					sprintf(writebuf,
+							"hello-predecessor-r causes me to repair my successor's predecessor\n");
+					logfilewriteline(logfilename, writebuf, strlen(writebuf));
+					//TODO It should then cause its successor to correctly rebuild its predecessor link by
+					//sending it an update-q message where i = 0.
+				}
 			}
 		}
 	} else if (status == 0) {
-		sprintf(writebuf,"hello-predecessor-r non-reply: my successor is non-responsive\n");
+		printf("client= %s hello-pred-q select time out occurred\n", Myname);
+		sprintf(writebuf,
+				"hello-predecessor-r non-reply: my successor is non-responsive\n");
 		logfilewriteline(logfilename, writebuf, strlen(writebuf));
 
-		processMsgBucket(sock, naaddr);
+		if (ReBuildtheRing(sock, naaddr) < 0) {
+			printf(
+					"projc error:HandleHelloPredecessorMsg->ReBuildtheRing failed to rebuild the ring\n");
+		}
 	}
 
+	logNodeInfo();
+	return 0;
 }
 
-return 0;
+/**
+ * This function rebuilds the ring on the exit of a node.
+ */
+int ReBuildtheRing(int sock, struct sockaddr_in naaddr) {
+	//rebuild the ring
+	/*
+	 * It will need to use update-q to correct its double-successor's predecessor, and
+	 * correct it's successor and double successor, and confirm and correct its finger table.
+	 */
+	TNode mydoublesucc, mypred, mysucc;
+	mydoublesucc.id = doublesucc.id;
+	mydoublesucc.port = doublesucc.port;
+
+	sendUpdateQuery(sock, &mydoublesucc, 0);
+
+	succ.id = doublesucc.id;
+	succ.port = doublesucc.port;
+
+	mysucc.id = succ.id;
+	mysucc.port = succ.port;
+	memset(&mydoublesucc, 0, sizeof(TNode));
+	if (FindNeighbor(sock, SUCCQ, mysucc, &mydoublesucc) < 0) {
+		printf(
+				"projb client %s: ReBuildtheRing->FindNeighbor find successor fails!\n",
+				Myname);
+		return -1;
+	}
+	doublesucc.id = mydoublesucc.id;
+	doublesucc.port = mydoublesucc.port;
+
+	mypred.id = pred.id;
+	mypred.port = pred.port;
+	if (UpdateFingerTable(sock, mypred, mysucc, UPDATE_PRED_INDEX) < 0) {
+		printf(
+				"projb client %s: ReBuildtheRing->UpdateFingerTable 0x%08x %d fails!\n",
+				Myname, mypred.id, UPDATE_PRED_INDEX);
+		return -1;
+	}
+
+	//TODO update the finger table
+
+	//process the pending messages in the bucket
+	processMsgBucket(sock, naaddr);
+
+	//TODO notify other nodes about the failure and prompt them to update their finger tables
+
+	return 0;
 }
 
 /**
@@ -2842,41 +2908,146 @@ return 0;
  */
 void processMsgBucket(int sock, struct sockaddr_in naaddr) {
 //printf("%s: Inside ProcessMsgBucket()\n", Myname);
-socklen_t sa_len = sizeof(naaddr);
-pMBucket temp = MBucketHead;
-char sendbuf[MAX_MSG_SIZE];
-int sendlen;
-while (nMsgCount) {
-	char *recvbuf = temp->msg;
-	LogTyiadMsg(HDPRQ, RECVFLAG, recvbuf);
-	HPQM *hpqm;
+	socklen_t sa_len = sizeof(naaddr);
+	pMBucket temp = MBucketHead;
+	char sendbuf[MAX_MSG_SIZE];
+	int sendlen;
+	while (nMsgCount) {
+		int msgtype = ntohl(temp->msgid);
+		char *recvbuf = temp->msg;
 
-	hpqm = (phpqm) recvbuf;
+		switch (msgtype) {
+		case SUCCQ: {
 
-	TNode mypred;
-	mypred.id = pred.id;
-	mypred.port = pred.port;
-	HPRM repmsg;
-	repmsg.msgid = htonl(HDPRR);
-	repmsg.ni = hpqm->ni;
-	repmsg.pi = htonl(mypred.id);
-	repmsg.pp = htonl(mypred.port);
-	memcpy(sendbuf, &repmsg, sizeof(HPRM));
+			// printf("clinet %s (%08x %d) recvd successor-q, lenght %d\n", Myname, HashID, MyUDPPort, recvlen);
+			// log
+			LogTyiadMsg(SUCCQ, RECVFLAG, recvbuf);
 
-	if ((sendlen = sendto(sock, sendbuf, sizeof(HPRM), 0,
-			(struct sockaddr *) &naaddr, sa_len)) != sizeof(HPRM)) {
-		printf(
-				"projb client %s error: HandleUdpMessage succ-q sendto ret %d, should send %u\n",
-				Myname, sendlen, sizeof(HPRM));
-		return;
+			NGRM sucrlp;
+			sucrlp.msgid = htonl(SUCCR);
+			sucrlp.ni = htonl(HashID);
+			sucrlp.si = htonl(succ.id);
+			sucrlp.sp = htonl(succ.port);
+			memcpy(sendbuf, &sucrlp, sizeof(sucrlp));
+			if ((sendlen = sendto(sock, sendbuf, sizeof(sucrlp), 0,
+					(struct sockaddr *) &naaddr, sa_len)) != sizeof(sucrlp)) {
+				printf(
+						"projb error: processMsgBucket sendto ret %d, shoulde send %u\n",
+						sendlen, sizeof(sucrlp));
+				return;
+			}
+			LogTyiadMsg(SUCCR, SENTFLAG, sendbuf);
+
+		}
+			break;
+
+		case UPDTQ: {
+
+			LogTyiadMsg(UPDTQ, RECVFLAG, recvbuf);
+			TNode t;
+			int idx;
+
+			pupqm ptr = (pupqm) recvbuf;
+			idx = ntohl(ptr->i);
+
+			if (idx == 0) { //update predecessor
+				pred.id = ntohl(ptr->si);
+				pred.port = ntohl(ptr->sp);
+				if (nStage >= 2) {
+					MyFT[0].node.id = pred.id;
+					MyFT[0].node.port = pred.port;
+
+					// send reply
+					UPRM uprmsg;
+					uprmsg.msgid = htonl(UPDTR);
+					uprmsg.ni = htonl(HashID);
+					uprmsg.r = htonl(1);
+					uprmsg.si = ptr->si;
+					uprmsg.sp = ptr->sp;
+					uprmsg.i = ptr->i;
+					memcpy(sendbuf, &uprmsg, sizeof(UPRM));
+					if ((sendlen = sendto(sock, sendbuf, sizeof(UPRM), 0,
+							(struct sockaddr *) &naaddr, sa_len))
+							!= sizeof(UPRM)) {
+						printf(
+								"projb error: client %s processMsgBucket update-r send ret %d, shoulde send %u\n",
+								Myname, sendlen, sizeof(UPRM));
+						return;
+					}
+					LogTyiadMsg(UPDTR, SENTFLAG, sendbuf);
+				}
+			} else if (idx == 1) { // update successor
+				succ.id = ntohl(ptr->si);
+				succ.port = ntohl(ptr->sp);
+				if (nStage >= 2) {
+					MyFT[1].node.id = succ.id;
+					MyFT[1].node.port = succ.port;
+
+					// send reply
+					UPRM uprmsg;
+					uprmsg.msgid = htonl(UPDTR);
+					uprmsg.ni = htonl(HashID);
+					uprmsg.r = htonl(1);
+					uprmsg.si = ptr->si;
+					uprmsg.sp = ptr->sp;
+					uprmsg.i = ptr->i;
+					memcpy(sendbuf, &uprmsg, sizeof(UPRM));
+					if ((sendlen = sendto(sock, sendbuf, sizeof(UPRM), 0,
+							(struct sockaddr *) &naaddr, sa_len))
+							!= sizeof(UPRM)) {
+						printf(
+								"projb error: client %s processMsgBucket update-r send ret %d, should send %u\n",
+								Myname, sendlen, sizeof(UPRM));
+						return;
+					}
+					LogTyiadMsg(UPDTR, SENTFLAG, sendbuf);
+				}
+
+			} else {
+				t.id = ntohl(ptr->si);
+				t.port = ntohl(ptr->sp);
+
+				if (idx == UPDATE_PRED_INDEX) {
+					//update self double successor pointer
+					doublesucc.id = t.id;
+					doublesucc.port = t.port;
+					printf(
+							"client: processMsgBucket(): client's %s double successsor is (0x%x,%d)\n",
+							Myname, doublesucc.id, doublesucc.port);
+				} else {
+					if (UpdateMyFingerTable(sock, t, idx) < 0) {
+						printf(
+								"projb error: client %s HandleUdpMessage update message UpdateMyFingerTable fails!\n",
+								Myname);
+						return;
+					}
+
+				}
+
+				UPRM uprmsg;
+				uprmsg.msgid = htonl(UPDTR);
+				uprmsg.ni = htonl(HashID);
+				uprmsg.r = htonl(1);
+				uprmsg.si = htonl(t.id);
+				uprmsg.sp = htonl(t.port);
+				uprmsg.i = htonl(idx);
+				memcpy(sendbuf, &uprmsg, sizeof(UPRM));
+				if ((sendlen = sendto(sock, sendbuf, sizeof(UPRM), 0,
+						(struct sockaddr *) &naaddr, sa_len)) != sizeof(UPRM)) {
+					printf(
+							"projb error: client %s processMsgBucket update-r send ret %d, should send %u\n",
+							Myname, sendlen, sizeof(UPRM));
+					return;
+				}
+				LogTyiadMsg(UPDTR, SENTFLAG, sendbuf);
+			}
+
+		}
+			break;
+		}
+
+		temp = temp->next;
+		MBucketHead = temp;
+		nMsgCount--;
 	}
-	LogTyiadMsg(HDPRR, SENTFLAG, sendbuf);
-
-	printf(
-			"Mohit--> %s: Processed one message from the bucket. Remaining tasks=%d\n",
-			Myname, (nMsgCount - 1));
-	temp = temp->next;
-	MBucketHead = temp;
-	nMsgCount--;
-}
 }

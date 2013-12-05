@@ -4,8 +4,8 @@ start_client alpha
 start_client bravo
 start_client charlie
 start_client delta
-start_client echo
-start_client foxtrot
+#start_client echo
+#start_client foxtrot
 store alpha
 store beta
 store gamma
