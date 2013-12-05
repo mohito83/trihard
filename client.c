@@ -266,7 +266,7 @@ int client(int mgrport) {
 			(void*) udpSock);
 
 	// use select to multiplex communication
-	tv.tv_sec = REPAIR_TIMEOUT;//SELECT_TIMEOUT;
+	tv.tv_sec = REPAIR_TIMEOUT; //SELECT_TIMEOUT;
 	tv.tv_usec = 0;
 	int sockMax;
 
@@ -599,7 +599,7 @@ int JoinRingWithFingerTable(int sock) {
 		}
 
 		/**************** for debug*/
-		//LogFingerTable();
+		LogFingerTable();
 		if (UpdateOthers(sock) < 0) {
 			printf("projb client %s: UpdateOthers fails!\n", Myname);
 			return -1;
@@ -1735,6 +1735,105 @@ int HandleUdpMessage(int sock) {
 		processHelloPredecessorMsg(sock, recvbuf, cliaddr);
 	}
 		break;
+	case PRCQM: {
+
+		char sendbuf[MAX_MSG_SIZE];
+		int sendlen;
+		socklen_t sa_len = sizeof(cliaddr);
+
+		LogTyiadMsg(PRCQM, RECVFLAG, recvbuf);
+		PCQM *pcqm;
+
+		pcqm = (ppcqm) recvbuf;
+
+		if (ntohl(pcqm->ni) != succ.id) {
+			//update my finger table
+			int i;
+			for (i = 1; i < FTLEN; i++) {
+				if (MyFT[i].node.id == ntohl(pcqm->oi)) {
+					MyFT[i].node.id = ntohl(pcqm->ni);
+					MyFT[i].node.port = ntohl(pcqm->np);
+				}
+			}
+
+			//reply with response message
+			PCRM repmsg;
+			repmsg.msgid = htonl(PRCRM);
+			repmsg.di = pcqm->di;
+			repmsg.ni = pcqm->ni;
+			repmsg.np = pcqm->np;
+			repmsg.result = htonl(1);
+			memcpy(sendbuf, &repmsg, sizeof(PCRM));
+
+			if ((sendlen = sendto(sock, sendbuf, sizeof(PCRM), 0,
+					(struct sockaddr *) &cliaddr, sa_len)) != sizeof(PCRM)) {
+				printf(
+						"projb client %s error: HandleUdpMsg PCRM-r sendto ret %d, should send %u\n",
+						Myname, sendlen, sizeof(PCRM));
+				return -1;
+			}
+			LogTyiadMsg(PRCRM, SENTFLAG, sendbuf);
+
+			//forward this message to my successor
+			TNode mysucc;
+			mysucc.id = succ.id;
+			mysucc.port = succ.port;
+			memset(sendbuf, 0, sizeof(sendbuf));
+
+			PCQM qmesg;
+			qmesg.msgid = htonl(PRCQM);
+			qmesg.di = htonl(mysucc.id);
+			qmesg.oi = pcqm->oi;
+			qmesg.op = pcqm->op;
+			qmesg.ni = pcqm->ni;
+			qmesg.np = pcqm->np;
+			memcpy(sendbuf, &qmesg, sizeof(PCQM));
+			struct sockaddr_in addr_in;
+			addr_in.sin_family = AF_INET;
+			addr_in.sin_port = htons(mysucc.port);
+			addr_in.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+			if ((sendlen = sendto(sock, sendbuf, sizeof(PCQM), 0,
+					(struct sockaddr *) &addr_in, sa_len)) != sizeof(PCQM)) {
+				printf(
+						"projb client %s error: HandleUdpMesg PCRQ-q sendto ret %d, should send %u\n",
+						Myname, sendlen, sizeof(PCQM));
+				return -1;
+			}
+			LogTyiadMsg(PRCQM, SENTFLAG, sendbuf);
+
+			//wait for the response
+			if ((recvlen = recvfrom(sock, recvbuf, sizeof(PCRM), 0, NULL, NULL))
+					!= sizeof(PCRM)) {
+				printf(
+						"projb error: HandleUdpMessage PCRM-r recvfrom ret %d, should recv %u\n",
+						recvlen, sizeof(PCRM));
+				return -1;
+			}
+			LogTyiadMsg(PRCRM, RECVFLAG, recvbuf);
+
+		} else {
+			//reply with response message
+			PCRM repmsg;
+			repmsg.msgid = htonl(PRCRM);
+			repmsg.di = pcqm->di;
+			repmsg.ni = pcqm->ni;
+			repmsg.np = pcqm->np;
+			repmsg.result = htonl(0);
+			memcpy(sendbuf, &repmsg, sizeof(PCRM));
+
+			if ((sendlen = sendto(sock, sendbuf, sizeof(PCRM), 0,
+					(struct sockaddr *) &cliaddr, sa_len)) != sizeof(PCRM)) {
+				printf(
+						"projb client %s error: HandleUdpMsg PCRM-r sendto ret %d, should send %u\n",
+						Myname, sendlen, sizeof(PCRM));
+				return -1;
+			}
+			LogTyiadMsg(PRCRM, SENTFLAG, sendbuf);
+		}
+
+	}
+		break;
 	default:  // should not happen
 		printf(
 				"projb exception: recv unexpected Triad message %d. I'm %s %08x port %d\n",
@@ -2704,6 +2803,28 @@ void LogTyiadMsg(int mtype, int sorr, char *buf) {
 		msglen = sizeof(HPRM);
 	}
 		break;
+	case PRCQM: {
+		ppcqm tempptr = (ppcqm) buf;
+		buf[sizeof(PCQM)] = '\0';
+		snprintf(writebuf, sizeof(writebuf),
+				"preempt-successor-q %s (0x%08x 0x%08x %d 0x%08x %d)\n",
+				comtype, ntohl(tempptr->di), ntohl(tempptr->oi),
+				ntohl(tempptr->op), ntohl(tempptr->ni), ntohl(tempptr->np));
+		logfilewriteline(logfilename, writebuf, strlen(writebuf));
+		msglen = sizeof(PCQM);
+	}
+		break;
+	case PRCRM: {
+		ppcrm tempptr = (ppcrm) buf;
+		buf[sizeof(PCRM)] = '\0';
+		snprintf(writebuf, sizeof(writebuf),
+				"preempt-successor-r %s (0x%08x 0x%08x %d %d)\n", comtype,
+				ntohl(tempptr->di), ntohl(tempptr->ni), ntohl(tempptr->np),
+				ntohl(tempptr->result));
+		logfilewriteline(logfilename, writebuf, strlen(writebuf));
+		msglen = sizeof(PCRM);
+	}
+		break;
 	default:
 		break;
 	}
@@ -2832,6 +2953,8 @@ int HandleHelloPredecessorMsg(int sock, TNode ta) {
 							"hello-predecessor-r confirms my successor's predecessor is me, 0x%08x.\n",
 							predID);
 					logfilewriteline(logfilename, writebuf, strlen(writebuf));
+					LogFingerTable();
+					return 0;
 				} else {
 					sprintf(writebuf,
 							"hello-predecessor-r reports my successor's predecessor is 0x%08x, not me 0x%08x.\n",
@@ -2855,9 +2978,10 @@ int HandleHelloPredecessorMsg(int sock, TNode ta) {
 						//sending it an update-q message where i = 0.
 					}
 				}
+				flag = 0;
 				break;
 			}
-		} else if (status == 0 || difftime(end, start) > 2.0) {
+		} else if (status == 0) {
 			flag = 1;
 			break;
 		}
@@ -2875,7 +2999,8 @@ int HandleHelloPredecessorMsg(int sock, TNode ta) {
 		}
 	}
 
-	logNodeInfo();
+	 LogFingerTable();
+	//logNodeInfo();
 	return 0;
 }
 
@@ -2883,16 +3008,18 @@ int HandleHelloPredecessorMsg(int sock, TNode ta) {
  * This function rebuilds the ring on the exit of a node.
  */
 int ReBuildtheRing(int sock, struct sockaddr_in naaddr) {
-//rebuild the ring
 	/*
 	 * It will need to use update-q to correct its double-successor's predecessor, and
 	 * correct it's successor and double successor, and confirm and correct its finger table.
 	 */
-	TNode mydoublesucc, mypred, mysucc;
+	TNode mydoublesucc, mypred, mysucc, tempsucc;
 	mydoublesucc.id = doublesucc.id;
 	mydoublesucc.port = doublesucc.port;
 
 	sendUpdateQuery(sock, &mydoublesucc, 0);
+
+	tempsucc.id = succ.id;
+	tempsucc.port = succ.port;
 
 	succ.id = doublesucc.id;
 	succ.port = doublesucc.port;
@@ -2918,12 +3045,50 @@ int ReBuildtheRing(int sock, struct sockaddr_in naaddr) {
 		return -1;
 	}
 
-//TODO update the finger table
+	// update my finger table
+	int i;
+	for (i = 1; i < FTLEN; i++) {
+		if (MyFT[i].node.id == tempsucc.id) {
+			MyFT[i].node.id = succ.id;
+			MyFT[i].node.port = succ.port;
+		}
+	}
 
-//process the pending messages in the bucket
+	//process the pending messages in the bucket
 	processMsgBucket(sock, naaddr);
 
-//TODO notify other nodes about the failure and prompt them to update their finger tables
+	// notify other nodes about the failure and prompt them to update their finger tables
+	naaddr.sin_port = htons(succ.port);
+	int nSendbytes, nRecvbytes;
+	char sendbuf[MAX_MSG_SIZE], recvbuf[MAX_MSG_SIZE];
+
+	PCQM qmesg;
+	qmesg.msgid = htonl(PRCQM);
+	qmesg.di = htonl(mysucc.id);
+	qmesg.oi = htonl(tempsucc.id);
+	qmesg.op = htonl(tempsucc.port);
+	qmesg.ni = htonl(succ.id);
+	qmesg.np = htonl(succ.port);
+	memcpy(sendbuf, &qmesg, sizeof(PCQM));
+
+	if ((nSendbytes = sendto(sock, sendbuf, sizeof(PCQM), 0,
+			(struct sockaddr *) &naaddr, sizeof(naaddr))) != sizeof(PCQM)) {
+		printf(
+				"projb error: ReBuildtheRing-> preempt successor sendto ret %d, should send %u\n",
+				nSendbytes, sizeof(PCQM));
+		return -1;
+	}
+	LogTyiadMsg(PRCQM, SENTFLAG, sendbuf);
+
+	//wait for reply
+	if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(PCRM), 0, NULL, NULL))
+			!= sizeof(PCRM)) {
+		printf(
+				"projb error: ReBuildtheRing-> preempt successor recvfrom ret %d, should send %u\n",
+				nSendbytes, sizeof(PCRM));
+		return -1;
+	}
+	LogTyiadMsg(PRCRM, RECVFLAG, recvbuf);
 
 	return 0;
 }

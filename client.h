@@ -51,8 +51,10 @@ typedef struct TriadNode {
 #define NXTDQ 23
 #define NXTDR 24
 
-#define HDPRQ 31
+#define HDPRQ	31
 #define HDPRR	32
+#define PRCQM	33
+#define PRCRM	34
 
 #define MAX_TEXT_SIZE 96
 #define MAX_MSG_SIZE	128
@@ -161,6 +163,24 @@ typedef struct handlepredreplymsg {
 	unsigned int pi;
 	int pp;
 } HPRM, *phprm;
+
+//custom message for preemtive correction for finger table
+typedef struct preemptcorrectquerymsg{
+	int msgid;
+	unsigned int di; //target node id
+	unsigned int oi; //old node id
+	unsigned int ni; //new node id
+	int op; //old node port#
+	int np; //new node port#
+} PCQM, *ppcqm;
+
+typedef struct preemptcorrectreplymsg{
+	int msgid;
+	unsigned int di;
+	unsigned int ni;
+	int np;
+	int result; //0-failed , 1-Success
+} PCRM, *ppcrm;
 
 typedef struct ClientStore {
 	char txt[MAX_TEXT_SIZE];
