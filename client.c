@@ -1998,6 +1998,23 @@ int HandleStoreMsg(int sock, char *str) {
 	return ret;
 }
 
+/**
+ * Handle search for stage 7. Use ext-stores-q/r messages for this purpose.
+ */
+int processExtStores(int sock, char*str) {
+	unsigned int str_hash;
+	int ret;
+	str_hash = gethashid(nMgrNonce, str);
+
+	unsigned int opcode[] = { 0x0, 0x40000000, 0x80000000, 0xc0000000 };
+	int i;
+	for (i = 0; i < 4; i++) {
+		unsigned int location = opcode[i] ^ str_hash;
+	}
+
+	return ret;
+}
+
 int HandleSearchMsg(int sock, char *str) {
 	unsigned int str_hash;
 	TNode TempA, TempB;
@@ -2013,112 +2030,121 @@ int HandleSearchMsg(int sock, char *str) {
 	//int nStrlen = strlen(str);
 	int ret;
 
-	str_hash = gethashid(nMgrNonce, str);
+	if (nStage == 7) {
 
-	if (str_hash > pred.id && str_hash <= HashID) {  // I should have if, do I?
-		if ((ret = SearchClientStore(str_hash, str)) == 1) {
-			// log
-			snprintf(szWritebuf, sizeof(szWritebuf),
-					"search %s to node 0x%08x, key PRESENT\n", str, HashID);
-			logfilewriteline(logfilename, szWritebuf, strlen(szWritebuf));
+	} else {
+		str_hash = gethashid(nMgrNonce, str);
 
-			return 1;
-		} else {
-			snprintf(szWritebuf, sizeof(szWritebuf),
-					"search %s to node 0x%08x, key ABSENT\n", str, HashID);
-			logfilewriteline(logfilename, szWritebuf, strlen(szWritebuf));
-			return 0;
-		}
-	} else if (str_hash < pred.id && pred.id > HashID && str_hash <= HashID) { // still store here
-		if ((ret = SearchClientStore(str_hash, str)) == 1) {
-			// log
-			snprintf(szWritebuf, sizeof(szWritebuf),
-					"search %s to node 0x%08x, key PRESENT\n", str, HashID);
-			logfilewriteline(logfilename, szWritebuf, strlen(szWritebuf));
-
-			return 1;
-		} else {
-			snprintf(szWritebuf, sizeof(szWritebuf),
-					"search %s to node 0x%08x, key ABSENT\n", str, HashID);
-			logfilewriteline(logfilename, szWritebuf, strlen(szWritebuf));
-			return 0;
-		}
-	} else if (str_hash < HashID) {   // start from predecessor
-		msgtype = CLSTQ;
-		TempA.id = pred.id;
-		TempA.port = pred.port;
-		flag = 0;
-		while (flag == 0) {
-			if (nStage >= 4) {
-				// find succ
-				if (FindSuccWithFT(sock, str_hash, &TempA) < 0) {
-					printf(
-							"projb client %s: HandleStoreMessage FindSuccWithFT fail!\n",
-							Myname);
-					return -1;
-				}
-			}
-
-			if ((ret = FindClosest(sock, msgtype, str_hash, TempA, &TempB))
-					< 0) { // it's been changed to stores-q/r messages
-				return -1;
-			}
-
-			if (TempA.id == TempB.id && ret == 1) { // find the node and it has id, yeah!
-			// log and return
+		if (str_hash > pred.id && str_hash <= HashID) { // I should have if, do I?
+			if ((ret = SearchClientStore(str_hash, str)) == 1) {
+				// log
 				snprintf(szWritebuf, sizeof(szWritebuf),
-						"search %s to node 0x%08x, key PRESENT\n", str,
-						TempA.id);
+						"search %s to node 0x%08x, key PRESENT\n", str, HashID);
 				logfilewriteline(logfilename, szWritebuf, strlen(szWritebuf));
+
 				return 1;
-			} else if (TempA.id == TempB.id && ret == 2) { // finde the node, but it doesn't have the id.
+			} else {
 				snprintf(szWritebuf, sizeof(szWritebuf),
-						"search %s to node 0x%08x, key ABSENT\n", str,
-						TempA.id);
+						"search %s to node 0x%08x, key ABSENT\n", str, HashID);
 				logfilewriteline(logfilename, szWritebuf, strlen(szWritebuf));
 				return 0;
-			} else {
-				TempA.id = TempB.id;
-				TempA.port = TempB.port;
 			}
-		}
-	} else if (str_hash > HashID) {  // start from successor
-		msgtype = CLSTQ;
-		TempA.id = succ.id;
-		TempA.port = succ.port;
-		flag = 0;
-		while (flag == 0) {
-			if (nStage >= 4) {
-				// find succ
-				if (FindSuccWithFT(sock, str_hash, &TempA) < 0) {
-					printf(
-							"projb client %s: HandleStoreMessage FindSuccWithFT fail!\n",
-							Myname);
-					return -1;
-				}
-			}
-
-			if ((ret = FindClosest(sock, msgtype, str_hash, TempA, &TempB))
-					< 0) { // it's been changed to stores-q/r messages
-				return -1;
-			}
-
-			if (TempA.id == TempB.id && ret == 1) { // find the node and it has id, yeah!
-			// log and return
+		} else if (str_hash < pred.id && pred.id > HashID
+				&& str_hash <= HashID) { // still store here
+			if ((ret = SearchClientStore(str_hash, str)) == 1) {
+				// log
 				snprintf(szWritebuf, sizeof(szWritebuf),
-						"search %s to node 0x%08x, key PRESENT\n", str,
-						TempA.id);
+						"search %s to node 0x%08x, key PRESENT\n", str, HashID);
 				logfilewriteline(logfilename, szWritebuf, strlen(szWritebuf));
+
 				return 1;
-			} else if (TempA.id == TempB.id && ret == 2) { // finde the node, but it doesn't have the id.
+			} else {
 				snprintf(szWritebuf, sizeof(szWritebuf),
-						"search %s to node 0x%08x, key ABSENT\n", str,
-						TempA.id);
+						"search %s to node 0x%08x, key ABSENT\n", str, HashID);
 				logfilewriteline(logfilename, szWritebuf, strlen(szWritebuf));
 				return 0;
-			} else {
-				TempA.id = TempB.id;
-				TempA.port = TempB.port;
+			}
+		} else if (str_hash < HashID) {   // start from predecessor
+			msgtype = CLSTQ;
+			TempA.id = pred.id;
+			TempA.port = pred.port;
+			flag = 0;
+			while (flag == 0) {
+				if (nStage >= 4) {
+					// find succ
+					if (FindSuccWithFT(sock, str_hash, &TempA) < 0) {
+						printf(
+								"projb client %s: HandleStoreMessage FindSuccWithFT fail!\n",
+								Myname);
+						return -1;
+					}
+				}
+
+				if ((ret = FindClosest(sock, msgtype, str_hash, TempA, &TempB))
+						< 0) { // it's been changed to stores-q/r messages
+					return -1;
+				}
+
+				if (TempA.id == TempB.id && ret == 1) { // find the node and it has id, yeah!
+				// log and return
+					snprintf(szWritebuf, sizeof(szWritebuf),
+							"search %s to node 0x%08x, key PRESENT\n", str,
+							TempA.id);
+					logfilewriteline(logfilename, szWritebuf,
+							strlen(szWritebuf));
+					return 1;
+				} else if (TempA.id == TempB.id && ret == 2) { // finde the node, but it doesn't have the id.
+					snprintf(szWritebuf, sizeof(szWritebuf),
+							"search %s to node 0x%08x, key ABSENT\n", str,
+							TempA.id);
+					logfilewriteline(logfilename, szWritebuf,
+							strlen(szWritebuf));
+					return 0;
+				} else {
+					TempA.id = TempB.id;
+					TempA.port = TempB.port;
+				}
+			}
+		} else if (str_hash > HashID) {  // start from successor
+			msgtype = CLSTQ;
+			TempA.id = succ.id;
+			TempA.port = succ.port;
+			flag = 0;
+			while (flag == 0) {
+				if (nStage >= 4) {
+					// find succ
+					if (FindSuccWithFT(sock, str_hash, &TempA) < 0) {
+						printf(
+								"projb client %s: HandleStoreMessage FindSuccWithFT fail!\n",
+								Myname);
+						return -1;
+					}
+				}
+
+				if ((ret = FindClosest(sock, msgtype, str_hash, TempA, &TempB))
+						< 0) { // it's been changed to stores-q/r messages
+					return -1;
+				}
+
+				if (TempA.id == TempB.id && ret == 1) { // find the node and it has id, yeah!
+				// log and return
+					snprintf(szWritebuf, sizeof(szWritebuf),
+							"search %s to node 0x%08x, key PRESENT\n", str,
+							TempA.id);
+					logfilewriteline(logfilename, szWritebuf,
+							strlen(szWritebuf));
+					return 1;
+				} else if (TempA.id == TempB.id && ret == 2) { // finde the node, but it doesn't have the id.
+					snprintf(szWritebuf, sizeof(szWritebuf),
+							"search %s to node 0x%08x, key ABSENT\n", str,
+							TempA.id);
+					logfilewriteline(logfilename, szWritebuf,
+							strlen(szWritebuf));
+					return 0;
+				} else {
+					TempA.id = TempB.id;
+					TempA.port = TempB.port;
+				}
 			}
 		}
 	}
@@ -2820,6 +2846,27 @@ void LogTyiadMsg(int mtype, int sorr, char *buf) {
 				ntohl(tempptr->result));
 		logfilewriteline(logfilename, writebuf, strlen(writebuf));
 		msglen = sizeof(PCRM);
+	}
+		break;
+	case ESTRQ: {
+		pestqm tempptr = (pestqm) buf;
+		buf[sizeof(ESTQ)] = '\0';
+		snprintf(writebuf, sizeof(writebuf),
+				"ext-stores-q %s (0x%08x 0x%08x)\n", comtype,
+				ntohl(tempptr->ni), ntohl(tempptr->di));
+		logfilewriteline(logfilename, writebuf, strlen(writebuf));
+		msglen = sizeof(ESTQ);
+	}
+		break;
+	case ESTRR: {
+		pestrm tempptr = (pestrm) buf;
+		buf[sizeof(ESTR)] = '\0';
+		snprintf(writebuf, sizeof(writebuf),
+				"ext-stores-r %s (0x%08x 0x%08x 0x%08x %d %d %d %s)\n", comtype,
+				ntohl(tempptr->ni), ntohl(tempptr->di), ntohl(tempptr->ri), ntohl(tempptr->rp),
+				ntohl(tempptr->has),ntohl(tempptr->SL), tempptr->S);
+		logfilewriteline(logfilename, writebuf, strlen(writebuf));
+		msglen = sizeof(ESTR);
 	}
 		break;
 	default:
