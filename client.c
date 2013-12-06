@@ -1543,7 +1543,12 @@ int HandleUdpMessage(int sock) {
 
 		len = ntohl(stqptr->sl);
 		recvbuf[sizeof(STQM) + len] = '\0';
-		id = gethashid(nMgrNonce, (recvbuf + sizeof(STQM)));
+
+		if (nStage < 7) {
+			id = gethashid(nMgrNonce, (recvbuf + sizeof(STQM)));
+		} else {
+			id = ntohl(stqptr->xi);
+		}
 
 		memcpy(s, recvbuf + sizeof(STQM), len);
 		s[len] = '\0';
@@ -1859,12 +1864,11 @@ void ClosestPrecedingFinger(unsigned int id, TNode *tn) {
 	return;
 }
 
-// return 1 if succeed, 0 if store failed, 2 if string's already stored.
-int HandleStoreMsg(int sock, char *str) {
-	unsigned int str_hash;
-	TNode TempA, TempB;
-	int msgtype;
-	int flag = 0;
+/**
+ * This function is created out of HandleStoreMSg() To make the functionality more modular
+ */
+int processStoreMsg(int sock, char *str, unsigned int str_hash) {
+	TNode TempB;
 	struct sockaddr_in naaddr;
 	char sendbuf[256];
 	char recvbuf[256];
@@ -1875,11 +1879,13 @@ int HandleStoreMsg(int sock, char *str) {
 	pstrm pstorer;
 	int nStrlen;
 	int ret;
+	//XXX unsigned int hashForStr = gethashid(nMgrNonce, str);
 
 	nStrlen = strlen(str);
-	str_hash = gethashid(nMgrNonce, str);
 
-	if (str_hash > pred.id && str_hash <= HashID) {  //store here
+	if ((str_hash > pred.id && str_hash <= HashID)
+			|| (str_hash > pred.id && str_hash > HashID)
+			|| (str_hash < pred.id && str_hash <= HashID)) {  //store here
 		AddClientStore(str_hash, str);
 
 		//// just use sendbuf, as it's no more useful
@@ -1900,59 +1906,30 @@ int HandleStoreMsg(int sock, char *str) {
 
 		return 1;
 	} else {
-		if (nStage < 4) {
-			if (str_hash < HashID) { // not store here, search start from predecessor
-				msgtype = CLSTQ;
-				TempA.id = pred.id;
-				TempA.port = pred.port;
-				flag = 0;
-				while (flag == 0) {
-					if (FindClosest(sock, msgtype, str_hash, TempA, &TempB)
-							< 0) { // it's been changed to stores-q/r messages
-						return -1;
-					}
-
-					if (TempA.id == TempB.id) {
-						flag = 1;
-					} else {
-						TempA.id = TempB.id;
-						TempA.port = TempB.port;
-					}
-				}
-			} else if (str_hash > HashID) {
-				msgtype = CLSTQ;
-				TempA.id = succ.id;
-				TempA.port = succ.port;
-				flag = 0;
-				while (flag == 0) {
-					if (FindClosest(sock, msgtype, str_hash, TempA, &TempB)
-							< 0) { //
-						return -1;
-					}
-
-					if (TempA.id == TempB.id) {
-						flag = 1;
-					} else {
-						TempA.id = TempB.id;
-						TempA.port = TempB.port;
-					}
-				}
-			}
-		} else {
-			// find successor
-			if (FindSuccWithFT(sock, str_hash, &TempB) < 0) {
-				printf(
-						"projb client %s: HandleStoreMessage FindSuccWithFT fail!\n",
-						Myname);
-				return -1;
-			}
+		// find successor
+		if (FindSuccWithFT(sock, str_hash, &TempB) < 0) {
+			printf("projb client %s: HandleStoreMessage FindSuccWithFT fail!\n",
+					Myname);
+			return -1;
 		}
+
+		/*if (TempB.id == HashID) {
+		 AddClientStore(hashForStr, str);
+		 snprintf(sendbuf, sizeof(sendbuf),
+		 "add %s with hash 0x%08x to node 0x%08x\n", str, hashForStr,
+		 HashID);
+		 logfilewriteline(logfilename, sendbuf, strlen(sendbuf));
+		 return 1;
+		 }*/
 	}
 
 	// We have targeted the destination, now ask it to store the content
 	storeq.msgid = htonl(STORQ);
 	storeq.ni = htonl(TempB.id);
 	storeq.sl = htonl(nStrlen);
+	if (nStage == 7) {
+		storeq.xi = htonl(str_hash);
+	}
 	memcpy(sendbuf, &storeq, sizeof(STQM));
 	strncpy((sendbuf + sizeof(STQM)), str, nStrlen);
 	nBytestosend = sizeof(STQM) + nStrlen;
@@ -1973,8 +1950,8 @@ int HandleStoreMsg(int sock, char *str) {
 	/**********************************************************************
 	 *** for stage >= 6, needs to judge if the hello messages comes here ******
 	 **********************************************************************/
-	if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(recvbuf), 0, NULL, NULL))
-			< 0) {
+	if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(recvbuf), 0, NULL,
+	NULL)) < 0) {
 		printf("projb error: HandleStoreMsg recvfrom error.\n");
 		return -1;
 	}
@@ -1996,6 +1973,26 @@ int HandleStoreMsg(int sock, char *str) {
 				"add %s with hash 0x%08x to node 0x%08x\n", str, str_hash,
 				TempB.id);
 		logfilewriteline(logfilename, sendbuf, strlen(sendbuf));
+	}
+	return ret;
+}
+
+// return 1 if succeed, 0 if store failed, 2 if string's already stored.
+int HandleStoreMsg(int sock, char *str) {
+	unsigned int str_hash;
+	int ret;
+
+	str_hash = gethashid(nMgrNonce, str);
+
+	if (nStage == 7) {
+		unsigned int opcode[] = { 0x0, 0x40000000, 0x80000000, 0xc0000000 };
+		int i;
+		for (i = 0; i < 4; i++) {
+			unsigned int location = opcode[i] ^ str_hash;
+			processStoreMsg(sock, str, location);
+		}
+	} else {
+		ret = processStoreMsg(sock, str, str_hash);
 	}
 
 	return ret;
@@ -2602,7 +2599,7 @@ int AddToMesgBucket(char* str) {
 		nMsgCount++;
 	}
 
-	printf("Mohit-->%s: Adding message %d to bucket. Message count= %d\n",
+	printf("client: %s Adding message %d to bucket. Message count= %d\n",
 			Myname, msgtype, nMsgCount);
 	return msgtype;
 }
@@ -2999,7 +2996,7 @@ int HandleHelloPredecessorMsg(int sock, TNode ta) {
 		}
 	}
 
-	 LogFingerTable();
+	LogFingerTable();
 	//logNodeInfo();
 	return 0;
 }

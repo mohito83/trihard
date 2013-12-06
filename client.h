@@ -55,6 +55,8 @@ typedef struct TriadNode {
 #define HDPRR	32
 #define PRCQM	33
 #define PRCRM	34
+#define ESTRQ	17
+#define ESTRR	18
 
 #define MAX_TEXT_SIZE 96
 #define MAX_MSG_SIZE	128
@@ -105,6 +107,7 @@ typedef struct updtquerymsg {
 typedef struct storquerymsg {
 	int msgid;
 	unsigned int ni;
+	unsigned int xi;
 	int sl;
 } STQM, *pstqm;
 
@@ -165,7 +168,7 @@ typedef struct handlepredreplymsg {
 } HPRM, *phprm;
 
 //custom message for preemtive correction for finger table
-typedef struct preemptcorrectquerymsg{
+typedef struct preemptcorrectquerymsg {
 	int msgid;
 	unsigned int di; //target node id
 	unsigned int oi; //old node id
@@ -174,13 +177,30 @@ typedef struct preemptcorrectquerymsg{
 	int np; //new node port#
 } PCQM, *ppcqm;
 
-typedef struct preemptcorrectreplymsg{
+typedef struct preemptcorrectreplymsg {
 	int msgid;
 	unsigned int di;
 	unsigned int ni;
 	int np;
 	int result; //0-failed , 1-Success
 } PCRM, *ppcrm;
+
+typedef struct extstorequerymsg {
+	int msgid;
+	unsigned int ni;
+	unsigned int di;
+} ESTQ, *pestqm;
+
+typedef struct extstorereplymsg {
+	int msgid;
+	unsigned int ni;
+	unsigned int di;
+	unsigned int ri;
+	int rp;
+	int has;
+	int SL;
+	char *S;
+} ESTR, *pestrm;
 
 typedef struct ClientStore {
 	char txt[MAX_TEXT_SIZE];
@@ -195,11 +215,11 @@ typedef struct FingerTableNode {
 	TNode node;
 } FTNODE;
 
-typedef struct MsgBucket{
+typedef struct MsgBucket {
 	int msgid;
 	char msg[MAX_MSG_SIZE];
 	struct MsgBucket *next;
-}MBUCKET, *pMBucket;
+} MBUCKET, *pMBucket;
 
 int client(int mgrport);
 int GetInitInfo(int sock, char *selfname, char *firstnode, unsigned int *nonce,
