@@ -2016,9 +2016,9 @@ int processStoreMsg(int sock, char *str, unsigned int str_hash) {
 
 	nStrlen = strlen(str);
 
-	if ((str_hash > pred.id && str_hash <= HashID)
-			|| (str_hash > pred.id && str_hash > HashID)
-			|| (str_hash < pred.id && str_hash <= HashID)) {  //store here
+	if ((str_hash > pred.id && str_hash <= HashID)){
+			/*|| (str_hash > pred.id && str_hash > HashID)
+			|| (str_hash < pred.id && str_hash <= HashID)) {  //store here*/
 		AddClientStore(str_hash, str);
 
 		//// just use sendbuf, as it's no more useful
@@ -2046,14 +2046,14 @@ int processStoreMsg(int sock, char *str, unsigned int str_hash) {
 			return -1;
 		}
 
-		/*if (TempB.id == HashID) {
-		 AddClientStore(hashForStr, str);
-		 snprintf(sendbuf, sizeof(sendbuf),
-		 "add %s with hash 0x%08x to node 0x%08x\n", str, hashForStr,
-		 HashID);
-		 logfilewriteline(logfilename, sendbuf, strlen(sendbuf));
-		 return 1;
-		 }*/
+		if (TempB.id == HashID) {
+			AddClientStore(str_hash, str);
+			snprintf(sendbuf, sizeof(sendbuf),
+					"add %s with hash 0x%08x to node 0x%08x\n", str, str_hash,
+					HashID);
+			logfilewriteline(logfilename, sendbuf, strlen(sendbuf));
+			return 1;
+		}
 	}
 
 	// We have targeted the destination, now ask it to store the content

@@ -8,5 +8,5 @@ No, I didn't use any library other than those preseneted on the moodle page.
 I have used a 2 second timeout for hello-predecessor-q message. A timeout for hello-predecessor-q message indicates that my successor node is down, and I should start rebuilding/repairing the ring.
 
 6.4) How did you support receiving messages and also handling timeouts to do stabilization, when the replies might happen at the same time?
-
+I have used a 10 second timer (using timer library presented on the moodle page) and 10 second timeout for sending hello-predecessor-q messages and selec() respectively.
 
