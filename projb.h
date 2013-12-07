@@ -44,6 +44,7 @@ typedef struct ClientName
 {
 	char namestr[MAX_CLIENT_NAME_SIZE];
 	int tcpsock;    // reserved
+	int isbogus; //for stage 7: 0-authentic, 1- bogus
 	unsigned short udpport;
 	struct ClientName *next;
 }CNAME, *pCName;
@@ -101,7 +102,7 @@ extern int nKillClnt;
 #define KILLJOB 4	//kill_client
 
 void errexit(char *msg);
-void AddClientNameNode(char *name);
+void AddClientNameNode(char *name,int isbogus);
 void AddStoreTextNode(char *text);
 void AddSearchTextNode(char *str);
 void AddMgrJobNode(int job);

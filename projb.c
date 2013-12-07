@@ -120,12 +120,13 @@ int main(int argc, char *argv[]) {
 				errexit("config file wrong nonce statement.\n");
 		}
 
-		if (strcmp(sKeyword, "start_client") == 0) {
+		if (strcmp(sKeyword, "start_client") == 0 || strcmp(sKeyword, "start_tkcc") == 0) {
 			if (sscanf(confile_buf, "%s %s", sKeyword, sClientname) != 2)
 				errexit("config file wrong start_client statement.\n");
 
+			int isbogus = strcmp(sKeyword, "start_tkcc") == 0?1:0;
 			// add client name to list
-			AddClientNameNode(sClientname);
+			AddClientNameNode(sClientname,isbogus);
 		}
 
 		if (strcmp(sKeyword, "store") == 0) {
@@ -185,7 +186,7 @@ void errexit(char *msg) {
 	exit(1);
 }
 
-void AddClientNameNode(char *name) {
+void AddClientNameNode(char *name,int isbogus) {
 
 	if (CNameHead == NULL) { // first node
 		CNameHead = (pCName) malloc(sizeof(CNAME));
@@ -193,6 +194,7 @@ void AddClientNameNode(char *name) {
 			errexit("malloc fail!\n");
 
 		strncpy(CNameHead->namestr, name, MAX_CLIENT_NAME_SIZE);
+		CNameHead->isbogus=isbogus;
 		CNameHead->next = NULL;
 		CNameTail = CNameHead;
 
@@ -204,6 +206,7 @@ void AddClientNameNode(char *name) {
 			errexit("malloc fail!\n");
 
 		strncpy(newClient->namestr, name, MAX_CLIENT_NAME_SIZE);
+		newClient->isbogus = isbogus;
 		newClient->next = NULL;
 		CNameTail->next = newClient;
 		CNameTail = newClient;

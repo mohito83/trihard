@@ -24,26 +24,27 @@
 // Author:    Xun Fan (xunfan@usc.edu)
 // Date:    2011.8
 // Description: CSCI551 Fall 2011 project b, client module source file.
+#include <arpa/inet.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <netinet/in.h>
+#include <sys/select.h>
 #include <sys/socket.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <arpa/inet.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/types.h>
 #include <time.h>
+#include <unistd.h>
 
-#include "projb.h"
-#include "client.h"
-#include "sha1.h"
 #include "comm.h"
 #include "log.h"
+#include "projb.h"
 #include "ring.h"
+#include "sha1.h"
 #include "timers-c.h"
+#include "client.h"
 
 #define UPDATE_PRED_INDEX 100
 
@@ -66,6 +67,8 @@ TNode pred; // predecessor node
 TNode doublesucc; //double successor node
 
 char logfilename[256];
+
+int isBogusNode = 0; //1- bogus, 0- Authentic
 
 /**
  * This is the callback function called when the 10 second timer elapses
@@ -176,8 +179,8 @@ int client(int mgrport) {
 	// first join the Triad ring, no need to use select
 
 	// get initial information
-	if (GetInitInfo(nSockwkr, Myname, FirstNodeName, &nMgrNonce, &FirstNodePort)
-			< 0) {
+	if (GetInitInfo(nSockwkr, Myname, FirstNodeName, &nMgrNonce, &FirstNodePort,
+			&isBogusNode) < 0) {
 		errexit("client recv initial informatioin fail!\n");
 	}
 
@@ -374,7 +377,7 @@ int client(int mgrport) {
 
 					if (HandleSearchMsg(udpSock, sstr) < 0) {
 						printf(
-								"projb client %s error: handle store msg from manager!\n",
+								"projb client %s error: handle search msg from manager!\n",
 								Myname);
 						break;
 					}
@@ -385,7 +388,7 @@ int client(int mgrport) {
 					if ((nRecvbyte = RecvStreamLineForSelect(nSockwkr, sstr,
 							sizeof(sstr))) <= 0) {
 						printf(
-								"projb client %s error: recv store string from manager!\n",
+								"projb client %s error: recv end_client string from manager!\n",
 								Myname);
 						break;
 					}
@@ -457,11 +460,12 @@ int client(int mgrport) {
 }
 
 int GetInitInfo(int sock, char *selfname, char *firstnode, unsigned int *nonce,
-		unsigned short *port) {
+		unsigned short *port, int *isbogus) {
 	char szRecvbuf[256] = { 0 };
 	int nRecvsize = 0;
 	int nc;
 	int p;
+	int bogus;
 
 	// get nonce
 	if ((nRecvsize = RecvStreamLineForSelect(sock, szRecvbuf, sizeof(szRecvbuf)))
@@ -501,6 +505,14 @@ int GetInitInfo(int sock, char *selfname, char *firstnode, unsigned int *nonce,
 	szRecvbuf[nRecvsize - 1] = '\0'; // turn \n to \0
 	strncpy(firstnode, szRecvbuf, MAX_CLIENT_NAME_SIZE);
 
+	// get the isBogus Flag
+	if ((nRecvsize = RecvStreamLineForSelect(sock, szRecvbuf, sizeof(szRecvbuf)))
+			<= 0) {
+		return -1;
+	}
+	szRecvbuf[nRecvsize - 1] = '\0'; // turn \n to \0
+	bogus = atoi(szRecvbuf);
+	*isbogus = (unsigned int) bogus;
 	return 0;
 }
 
@@ -599,7 +611,7 @@ int JoinRingWithFingerTable(int sock) {
 		}
 
 		/**************** for debug*/
-		LogFingerTable();
+		//LogFingerTable();
 		if (UpdateOthers(sock) < 0) {
 			printf("projb client %s: UpdateOthers fails!\n", Myname);
 			return -1;
@@ -1839,6 +1851,59 @@ int HandleUdpMessage(int sock) {
 
 	}
 		break;
+	case ESTRQ: {
+
+		LogTyiadMsg(ESTRQ, RECVFLAG, recvbuf);
+		pestqm clqptr;
+		ESTR clrmsg;
+		clqptr = (pestqm) recvbuf;
+		unsigned int ndi = ntohl(clqptr->di);
+
+		clrmsg.msgid = htonl(ESTRR);
+		clrmsg.ni = htonl(HashID);
+		clrmsg.di = htonl(ndi);
+		clrmsg.ri = htonl(HashID);
+		clrmsg.rp = htonl(MyUDPPort);
+
+		if (isBogusNode) {
+			clrmsg.has = htonl(1);
+			clrmsg.SL = htons(strlen(BOGUS_TXT));
+			strcpy(clrmsg.S, BOGUS_TXT);
+		} else {
+			pCStore temp = NULL;
+			temp = CStoreHead;
+			int i;
+
+			for (i = 0; i < nCStore; i++) {
+				if (ndi == temp->id) {
+					ret = 1;
+					strcpy(clrmsg.S, temp->txt);
+					clrmsg.SL = htonl(strlen(temp->txt));
+				} else {
+					temp = temp->next;
+				}
+			}
+
+			if (ret == 1) {
+				clrmsg.has = htonl(ret);
+			} else {
+				clrmsg.has = htonl(0);
+			}
+		}
+
+		//send reply message
+		memcpy(sendbuf, &clrmsg, sizeof(ESTR));
+		if ((sendlen = sendto(sock, sendbuf, sizeof(ESTR), 0,
+				(struct sockaddr *) &cliaddr, sa_len)) != sizeof(ESTR)) {
+			printf(
+					"projb error: HandleUdpMessage CLSTR sendto ret %d, shoulde send %u\n",
+					sendlen, sizeof(ESTR));
+			return -1;
+		}
+		LogTyiadMsg(ESTRR, SENTFLAG, sendbuf);
+
+	}
+		break;
 	default:  // should not happen
 		printf(
 				"projb exception: recv unexpected Triad message %d. I'm %s %08x port %d\n",
@@ -1879,7 +1944,6 @@ int processStoreMsg(int sock, char *str, unsigned int str_hash) {
 	pstrm pstorer;
 	int nStrlen;
 	int ret;
-	//XXX unsigned int hashForStr = gethashid(nMgrNonce, str);
 
 	nStrlen = strlen(str);
 
@@ -1980,7 +2044,7 @@ int processStoreMsg(int sock, char *str, unsigned int str_hash) {
 // return 1 if succeed, 0 if store failed, 2 if string's already stored.
 int HandleStoreMsg(int sock, char *str) {
 	unsigned int str_hash;
-	int ret;
+	int ret = 1;
 
 	str_hash = gethashid(nMgrNonce, str);
 
@@ -1995,24 +2059,192 @@ int HandleStoreMsg(int sock, char *str) {
 		ret = processStoreMsg(sock, str, str_hash);
 	}
 
+	printf("Mohit--------> cleint=%s ret=%d\n", Myname, ret);
 	return ret;
+}
+
+/**
+ * This function handles the ext-stores-q/r messages
+ *
+ */
+int processExtStores(int sock, unsigned int ni, int np, unsigned int di,
+		char *str) {
+	struct sockaddr_in naaddr;
+	ESTQ extstoresq;
+	pestrm extstoresr;
+	char sendbuf[256];
+	char recvbuf[256];
+	int nSendbytes;
+	int nRecvbytes;
+
+	// We have targeted the destination, now ask it to store the content
+	extstoresq.msgid = htonl(ESTRQ);
+	extstoresq.ni = htonl(ni);
+	extstoresq.di = htonl(di);
+	memcpy(sendbuf, &extstoresq, sizeof(ESTQ));
+
+	naaddr.sin_family = AF_INET;
+	naaddr.sin_port = htons(np);
+	naaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+	if ((nSendbytes = sendto(sock, sendbuf, sizeof(ESTQ), 0,
+			(struct sockaddr *) &naaddr, sizeof(naaddr))) != sizeof(ESTQ)) {
+		printf("projb error: processExtStores sendto ret %d, should send %d\n",
+				nSendbytes, sizeof(ESTQ));
+		return -1;
+	}
+
+	LogTyiadMsg(ESTRQ, SENTFLAG, sendbuf);
+
+	//recv data here
+	if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(recvbuf), 0, NULL,
+	NULL)) < 0) {
+		printf("projb error: processExtStores recvfrom error.\n");
+		return -1;
+	}
+
+	LogTyiadMsg(ESTRR, RECVFLAG, recvbuf);
+
+	extstoresr = (pestrm) recvbuf;
+	if (strcmp(extstoresr->S, str) == 0) {
+		return 1;
+	} else {
+		return 0;
+	}
 }
 
 /**
  * Handle search for stage 7. Use ext-stores-q/r messages for this purpose.
  */
-int processExtStores(int sock, char*str) {
-	unsigned int str_hash;
-	int ret;
-	str_hash = gethashid(nMgrNonce, str);
+int HandleStage7Search(int sock, char*str) {
+	char writebuf[256];
+	TNode TempA, TempB;
+	int msgtype;
+	int flag, ret;
 
-	unsigned int opcode[] = { 0x0, 0x40000000, 0x80000000, 0xc0000000 };
-	int i;
+	unsigned int str_hash, mod_hash;
+	mod_hash = gethashid(nMgrNonce, str);
+
+	unsigned int pos_hash[] = { 0x0 ^ mod_hash, 0x40000000 ^ mod_hash,
+			0x80000000 ^ mod_hash, 0xc0000000 ^ mod_hash };
+	unsigned int nearest_nodes[2];
+	unsigned int data_stored[2];
+
+	//find two nearest node to make ext-stores-q request
+	int i, j = 0;
 	for (i = 0; i < 4; i++) {
-		unsigned int location = opcode[i] ^ str_hash;
-	}
+		if (HashID <= pos_hash[i]) {
+			str_hash = pos_hash[i];
+			nearest_nodes[j] = str_hash;
 
-	return ret;
+			if ((str_hash > pred.id && str_hash <= HashID)
+					|| (str_hash > pred.id && str_hash > HashID)
+					|| (str_hash < pred.id && str_hash <= HashID)) { // I should have if, do I?
+				data_stored[j] = SearchClientStore(str_hash, str);
+			} else if (str_hash < pred.id && pred.id > HashID
+					&& str_hash <= HashID) { // still store here
+				data_stored[j] = SearchClientStore(str_hash, str);
+			} else if (str_hash < HashID) {
+				// start from predecessor
+				msgtype = CLSTQ;
+				TempA.id = pred.id;
+				TempA.port = pred.port;
+				flag = 0;
+				while (flag == 0) {
+					if (nStage >= 4) {
+						// find succ
+						if (FindSuccWithFT(sock, str_hash, &TempA) < 0) {
+							printf(
+									"projb client %s: HandleStoreMessage FindSuccWithFT fail!\n",
+									Myname);
+							return -1;
+						}
+					}
+
+					if ((ret = FindClosest(sock, msgtype, str_hash, TempA,
+							&TempB)) < 0) { // it's been changed to stores-q/r messages
+						return -1;
+					}
+
+					if (TempA.id == TempB.id && ret == 1) { // find the node and it has id, yeah!
+					//fire ext-stores to get the data in the nodes.
+						data_stored[j] = processExtStores(sock, TempA.id,
+								TempA.port, str_hash, str);
+						break;
+					} else if (TempA.id == TempB.id && ret == 2) { // finde the node, but it doesn't have the id.
+						snprintf(writebuf, sizeof(writebuf),
+								"search %s to node 0x%08x, key ABSENT\n", str,
+								TempA.id);
+						logfilewriteline(logfilename, writebuf,
+								strlen(writebuf));
+						return 0;
+					} else {
+						TempA.id = TempB.id;
+						TempA.port = TempB.port;
+					}
+				}
+
+			} else if (str_hash > HashID) {
+				// start from successor
+				msgtype = CLSTQ;
+				TempA.id = succ.id;
+				TempA.port = succ.port;
+				flag = 0;
+				while (flag == 0) {
+					if (nStage >= 4) {
+						// find succ
+						if (FindSuccWithFT(sock, str_hash, &TempA) < 0) {
+							printf(
+									"projb client %s: HandleStoreMessage FindSuccWithFT fail!\n",
+									Myname);
+							return -1;
+						}
+					}
+
+					if ((ret = FindClosest(sock, msgtype, str_hash, TempA,
+							&TempB)) < 0) { // it's been changed to stores-q/r messages
+						return -1;
+					}
+
+					if (TempA.id == TempB.id && ret == 1) { // find the node and it has id, yeah!
+					//fire ext-stores to get the data in the nodes.
+						data_stored[j] = processExtStores(sock, TempA.id,
+								TempA.port, str_hash, str);
+						break;
+					} else if (TempA.id == TempB.id && ret == 2) { // finde the node, but it doesn't have the id.
+						snprintf(writebuf, sizeof(writebuf),
+								"search %s to node 0x%08x, key ABSENT\n", str,
+								TempA.id);
+						logfilewriteline(logfilename, writebuf,
+								strlen(writebuf));
+						return 0;
+					} else {
+						TempA.id = TempB.id;
+						TempA.port = TempB.port;
+					}
+				}
+
+			}
+
+			j++;
+			if (j >= 2) {
+				break;
+			}
+		}
+	}					//end of for
+
+	if (data_stored[0] == data_stored[1]) {
+		snprintf(writebuf, sizeof(writebuf),
+				"search %s to node 0x%08x and 0x%08x, key PRESENT and VERIFIED\n",
+				str, nearest_nodes[0], nearest_nodes[1]);
+		logfilewriteline(logfilename, writebuf, strlen(writebuf));
+	} else {
+		snprintf(writebuf, sizeof(writebuf),
+				"search %s to node 0x%08x and 0x%08x, key PRESENT and DISAGREE\n",
+				str, nearest_nodes[0], nearest_nodes[1]);
+		logfilewriteline(logfilename, writebuf, strlen(writebuf));
+	}
+	return 1;
 }
 
 int HandleSearchMsg(int sock, char *str) {
@@ -2028,10 +2260,11 @@ int HandleSearchMsg(int sock, char *str) {
 	//STQM  storeq;
 	//pstrm pstorer;
 	//int nStrlen = strlen(str);
-	int ret;
+	int ret = 1;
 
 	if (nStage == 7) {
-
+		ret = HandleStage7Search(sock, str);
+		return ret;
 	} else {
 		str_hash = gethashid(nMgrNonce, str);
 
@@ -2863,8 +3096,9 @@ void LogTyiadMsg(int mtype, int sorr, char *buf) {
 		buf[sizeof(ESTR)] = '\0';
 		snprintf(writebuf, sizeof(writebuf),
 				"ext-stores-r %s (0x%08x 0x%08x 0x%08x %d %d %d %s)\n", comtype,
-				ntohl(tempptr->ni), ntohl(tempptr->di), ntohl(tempptr->ri), ntohl(tempptr->rp),
-				ntohl(tempptr->has),ntohl(tempptr->SL), tempptr->S);
+				ntohl(tempptr->ni), ntohl(tempptr->di), ntohl(tempptr->ri),
+				ntohl(tempptr->rp), ntohl(tempptr->has), ntohl(tempptr->SL),
+				tempptr->S);
 		logfilewriteline(logfilename, writebuf, strlen(writebuf));
 		msglen = sizeof(ESTR);
 	}
@@ -2997,7 +3231,7 @@ int HandleHelloPredecessorMsg(int sock, TNode ta) {
 							"hello-predecessor-r confirms my successor's predecessor is me, 0x%08x.\n",
 							predID);
 					logfilewriteline(logfilename, writebuf, strlen(writebuf));
-					LogFingerTable();
+					//LogFingerTable();
 					return 0;
 				} else {
 					sprintf(writebuf,
@@ -3043,7 +3277,7 @@ int HandleHelloPredecessorMsg(int sock, TNode ta) {
 		}
 	}
 
-	LogFingerTable();
+	//LogFingerTable();
 	//logNodeInfo();
 	return 0;
 }

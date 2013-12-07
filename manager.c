@@ -172,13 +172,14 @@ int manager(void) {
 						// send nonce and name and name and port
 						if (pcnPos == CNameHead) {    // first client
 							snprintf(szSendbuf, sizeof(szSendbuf),
-									"%s\n%s\n%d\n%s\n", szNonce,
-									CNameHead->namestr, 0, CNameHead->namestr);
+									"%s\n%s\n%d\n%s\n%d\n", szNonce,
+									CNameHead->namestr, 0, CNameHead->namestr,
+									CNameHead->isbogus);
 						} else {		//not the first client
 							snprintf(szSendbuf, sizeof(szSendbuf),
-									"%s\n%s\n%d\n%s\n", szNonce,
+									"%s\n%s\n%d\n%s\n%d\n", szNonce,
 									pcnPos->namestr, CNameHead->udpport,
-									CNameHead->namestr);
+									CNameHead->namestr, pcnPos->isbogus);
 						}
 						nBytestosend = strlen(szSendbuf);
 						if (SendStreamData(newsock, szSendbuf, nBytestosend)
@@ -415,7 +416,7 @@ int manager(void) {
 							close(clientToKill->tcpsock);
 							//sleep for 60 seconds before executing the next command
 							printf("manager: putting to sleep for %d\n",
-									KILL_CLIENT_TIMEOUT);
+							KILL_CLIENT_TIMEOUT);
 							sleep(KILL_CLIENT_TIMEOUT);
 							prevJobWasKill = 0;
 						}

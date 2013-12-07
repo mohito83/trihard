@@ -68,6 +68,8 @@ typedef struct TriadNode {
 
 #define FTLEN 33
 
+#define BOGUS_TXT "nyah nyah"
+
 // Triad messages
 typedef struct ngbrquerymsg {  // for successor query and predecessor query
 	int msgid;
@@ -199,7 +201,7 @@ typedef struct extstorereplymsg {
 	int rp;
 	int has;
 	int SL;
-	char *S;
+	char S[MAX_TEXT_SIZE];
 } ESTR, *pestrm;
 
 typedef struct ClientStore {
@@ -223,7 +225,7 @@ typedef struct MsgBucket {
 
 int client(int mgrport);
 int GetInitInfo(int sock, char *selfname, char *firstnode, unsigned int *nonce,
-		unsigned short *port);
+		unsigned short *port, int *isbogus);
 int JoinRing(int sock);
 int FindNeighbor(int sock, int msgtype, TNode na, TNode *pnb);
 void LogTyiadMsg(int type, int sorr, char *buf);
