@@ -83,6 +83,25 @@ int TestTimer2_expire(void *p) {
 	return 0;
 }
 
+int SearchClientStore7(unsigned int id, char *str) {
+	pCStore temp = NULL;
+	temp = CStoreHead;
+	int i;
+
+	if (nCStore == 0) {
+		return 0;
+	} else {
+		for (i = 0; i < nCStore; i++) {
+			if (id == temp->id) {
+				strcpy(str, temp->txt);
+				return 1;
+			} else
+				temp = temp->next;
+		}
+		return 0;
+	}
+}
+
 void processHelloPredecessorMsg(int sock, char *recvbuf,
 		struct sockaddr_in naaddr) {
 	char sendbuf[MAX_MSG_SIZE];
@@ -1857,37 +1876,87 @@ int HandleUdpMessage(int sock) {
 		pestqm clqptr;
 		ESTR clrmsg;
 		clqptr = (pestqm) recvbuf;
+		TNode tempN;
+		char str[MAX_TEXT_SIZE];
 		unsigned int ndi = ntohl(clqptr->di);
-
-		clrmsg.msgid = htonl(ESTRR);
-		clrmsg.ni = htonl(HashID);
-		clrmsg.di = htonl(ndi);
-		clrmsg.ri = htonl(HashID);
-		clrmsg.rp = htonl(MyUDPPort);
-
 		if (isBogusNode) {
+			clrmsg.msgid = htonl(ESTRR);
+			clrmsg.ni = htonl(HashID);
+			clrmsg.di = htonl(ndi);
+			clrmsg.ri = htonl(HashID);
+			clrmsg.rp = htonl(MyUDPPort);
 			clrmsg.has = htonl(1);
 			clrmsg.SL = htons(strlen(BOGUS_TXT));
 			strcpy(clrmsg.S, BOGUS_TXT);
 		} else {
-			pCStore temp = NULL;
-			temp = CStoreHead;
-			int i;
-
-			for (i = 0; i < nCStore; i++) {
-				if (ndi == temp->id) {
-					ret = 1;
-					strcpy(clrmsg.S, temp->txt);
-					clrmsg.SL = htonl(strlen(temp->txt));
+			if (pred.id > HashID) {  // I'm the first node
+				if (ndi <= HashID || ndi > pred.id) {  // I should have it
+					ret = SearchClientStore7(ndi, str);
+					clrmsg.msgid = htonl(ESTRR);
+					clrmsg.ni = htonl(HashID);
+					clrmsg.di = htonl(ndi);
+					clrmsg.ri = htonl(HashID);
+					clrmsg.rp = htonl(MyUDPPort);
+					if (ret == 1) {
+						clrmsg.has = htonl(ret);
+						clrmsg.SL = htonl(strlen(str));
+						strcpy(clrmsg.S, str);
+					} else {
+						clrmsg.has = htonl(0);
+						clrmsg.SL = htonl(0);
+						strcpy(clrmsg.S, " ");
+					}
 				} else {
-					temp = temp->next;
+					ClosestPrecedingFinger(ndi, &tempN);
+					clrmsg.msgid = htonl(ESTRR);
+					clrmsg.ni = htonl(HashID);
+					clrmsg.di = htonl(ndi);
+					clrmsg.ri = htonl(tempN.id);
+					clrmsg.rp = htonl(tempN.port);
+					clrmsg.has = htonl(0);
+					clrmsg.SL = htonl(0);
+					strcpy(clrmsg.S, " ");
 				}
-			}
-
-			if (ret == 1) {
-				clrmsg.has = htonl(ret);
 			} else {
-				clrmsg.has = htonl(0);
+				if (ndi <= HashID) {
+					if (ndi > pred.id || ndi == HashID) { // I should have it
+						ret = SearchClientStore7(ndi, str);
+						clrmsg.msgid = htonl(ESTRR);
+						clrmsg.ni = htonl(HashID);
+						clrmsg.di = htonl(ndi);
+						clrmsg.ri = htonl(HashID);
+						clrmsg.rp = htonl(MyUDPPort);
+						if (ret == 1) {
+							clrmsg.has = htonl(ret);
+							clrmsg.SL = htonl(strlen(str));
+							strcpy(clrmsg.S, str);
+						} else {
+							clrmsg.has = htonl(0);
+							clrmsg.SL = htonl(0);
+							strcpy(clrmsg.S, " ");
+						}
+					} else {
+						ClosestPrecedingFinger(ndi, &tempN);
+						clrmsg.msgid = htonl(ESTRR);
+						clrmsg.ni = htonl(HashID);
+						clrmsg.di = htonl(ndi);
+						clrmsg.ri = htonl(tempN.id);
+						clrmsg.rp = htonl(tempN.port);
+						clrmsg.has = htonl(0);
+						clrmsg.SL = htonl(0);
+						strcpy(clrmsg.S, " ");
+					}
+				} else {
+					ClosestPrecedingFinger(ndi, &tempN);
+					clrmsg.msgid = htonl(ESTRR);
+					clrmsg.ni = htonl(HashID);
+					clrmsg.di = htonl(ndi);
+					clrmsg.ri = htonl(tempN.id);
+					clrmsg.rp = htonl(tempN.port);
+					clrmsg.has = htonl(0);
+					clrmsg.SL = htonl(0);
+					strcpy(clrmsg.S, " ");
+				}
 			}
 		}
 
@@ -1896,7 +1965,7 @@ int HandleUdpMessage(int sock) {
 		if ((sendlen = sendto(sock, sendbuf, sizeof(ESTR), 0,
 				(struct sockaddr *) &cliaddr, sa_len)) != sizeof(ESTR)) {
 			printf(
-					"projb error: HandleUdpMessage CLSTR sendto ret %d, shoulde send %u\n",
+					"projb error: HandleUdpMessage ESTR sendto ret %d, shoulde send %u\n",
 					sendlen, sizeof(ESTR));
 			return -1;
 		}
@@ -2059,7 +2128,6 @@ int HandleStoreMsg(int sock, char *str) {
 		ret = processStoreMsg(sock, str, str_hash);
 	}
 
-	printf("Mohit--------> cleint=%s ret=%d\n", Myname, ret);
 	return ret;
 }
 
@@ -2067,8 +2135,7 @@ int HandleStoreMsg(int sock, char *str) {
  * This function handles the ext-stores-q/r messages
  *
  */
-int processExtStores(int sock, unsigned int ni, int np, unsigned int di,
-		char *str) {
+int processExtStores(int sock, unsigned int di, char *str, TNode na, TNode *pnb) {
 	struct sockaddr_in naaddr;
 	ESTQ extstoresq;
 	pestrm extstoresr;
@@ -2077,14 +2144,20 @@ int processExtStores(int sock, unsigned int ni, int np, unsigned int di,
 	int nSendbytes;
 	int nRecvbytes;
 
+	if (na.id == HashID) {
+		// look up in my own finger table
+		ClosestPrecedingFinger(di, pnb);
+		return 0;
+	}
+
 	// We have targeted the destination, now ask it to store the content
 	extstoresq.msgid = htonl(ESTRQ);
-	extstoresq.ni = htonl(ni);
+	extstoresq.ni = htonl(na.id);
 	extstoresq.di = htonl(di);
 	memcpy(sendbuf, &extstoresq, sizeof(ESTQ));
 
 	naaddr.sin_family = AF_INET;
-	naaddr.sin_port = htons(np);
+	naaddr.sin_port = htons(na.port);
 	naaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
 	if ((nSendbytes = sendto(sock, sendbuf, sizeof(ESTQ), 0,
@@ -2097,8 +2170,8 @@ int processExtStores(int sock, unsigned int ni, int np, unsigned int di,
 	LogTyiadMsg(ESTRQ, SENTFLAG, sendbuf);
 
 	//recv data here
-	if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(recvbuf), 0, NULL,
-	NULL)) < 0) {
+	if ((nRecvbytes = recvfrom(sock, recvbuf, sizeof(recvbuf), 0, NULL, NULL))
+			< 0) {
 		printf("projb error: processExtStores recvfrom error.\n");
 		return -1;
 	}
@@ -2106,11 +2179,23 @@ int processExtStores(int sock, unsigned int ni, int np, unsigned int di,
 	LogTyiadMsg(ESTRR, RECVFLAG, recvbuf);
 
 	extstoresr = (pestrm) recvbuf;
-	if (strcmp(extstoresr->S, str) == 0) {
-		return 1;
-	} else {
-		return 0;
+	if (1 == ntohl(extstoresr->has) && na.id == ntohl(extstoresr->ri)) { // it has the string
+		pnb->id = ntohl(extstoresr->ri);
+		pnb->port = ntohl(extstoresr->rp);
+		if (strcmp(extstoresr->S, str) == 0)
+			return 1;
+		else
+			return 2;
+	} else if (0 == ntohl(extstoresr->has) && na.id == ntohl(extstoresr->ri)) { // it doesn't have the string
+		pnb->id = ntohl(extstoresr->ri);
+		pnb->port = ntohl(extstoresr->rp);
+		return 3;
 	}
+
+	pnb->id = ntohl(extstoresr->ri);
+	pnb->port = ntohl(extstoresr->rp);
+
+	return 0;
 }
 
 /**
@@ -2119,7 +2204,6 @@ int processExtStores(int sock, unsigned int ni, int np, unsigned int di,
 int HandleStage7Search(int sock, char*str) {
 	char writebuf[256];
 	TNode TempA, TempB;
-	int msgtype;
 	int flag, ret;
 
 	unsigned int str_hash, mod_hash;
@@ -2132,46 +2216,57 @@ int HandleStage7Search(int sock, char*str) {
 
 	//find two nearest node to make ext-stores-q request
 	int i, j = 0;
+
 	for (i = 0; i < 4; i++) {
 		if (HashID <= pos_hash[i]) {
 			str_hash = pos_hash[i];
 			nearest_nodes[j] = str_hash;
 
-			if ((str_hash > pred.id && str_hash <= HashID)
-					|| (str_hash > pred.id && str_hash > HashID)
-					|| (str_hash < pred.id && str_hash <= HashID)) { // I should have if, do I?
+			if ((str_hash > pred.id && str_hash <= HashID)) {
+				/*|| (str_hash > pred.id && str_hash > HashID)
+				 || (str_hash < pred.id && str_hash <= HashID)) { // I should have if, do I?*/
 				data_stored[j] = SearchClientStore(str_hash, str);
+				if (data_stored[j] == 0) {
+					snprintf(writebuf, sizeof(writebuf),
+							"search %s to node 0x%08x, key ABSENT\n", str,
+							HashID);
+					logfilewriteline(logfilename, writebuf, strlen(writebuf));
+					return 0;
+				}
 			} else if (str_hash < pred.id && pred.id > HashID
 					&& str_hash <= HashID) { // still store here
 				data_stored[j] = SearchClientStore(str_hash, str);
+				if (data_stored[j] == 0) {
+					snprintf(writebuf, sizeof(writebuf),
+							"search %s to node 0x%08x, key ABSENT\n", str,
+							HashID);
+					logfilewriteline(logfilename, writebuf, strlen(writebuf));
+					return 0;
+				}
 			} else if (str_hash < HashID) {
 				// start from predecessor
-				msgtype = CLSTQ;
 				TempA.id = pred.id;
 				TempA.port = pred.port;
 				flag = 0;
 				while (flag == 0) {
-					if (nStage >= 4) {
-						// find succ
-						if (FindSuccWithFT(sock, str_hash, &TempA) < 0) {
-							printf(
-									"projb client %s: HandleStoreMessage FindSuccWithFT fail!\n",
-									Myname);
-							return -1;
-						}
+					// find succ
+					if (FindSuccWithFT(sock, str_hash, &TempA) < 0) {
+						printf(
+								"projb client %s: HandleStage7Search FindSuccWithFT fail!\n",
+								Myname);
+						return -1;
 					}
 
-					if ((ret = FindClosest(sock, msgtype, str_hash, TempA,
+					if ((ret = processExtStores(sock, str_hash, str, TempA,
 							&TempB)) < 0) { // it's been changed to stores-q/r messages
 						return -1;
 					}
 
-					if (TempA.id == TempB.id && ret == 1) { // find the node and it has id, yeah!
+					if (TempA.id == TempB.id && ret < 3) { // find the node and it has id, yeah!
 					//fire ext-stores to get the data in the nodes.
-						data_stored[j] = processExtStores(sock, TempA.id,
-								TempA.port, str_hash, str);
+						data_stored[j] = ret;
 						break;
-					} else if (TempA.id == TempB.id && ret == 2) { // finde the node, but it doesn't have the id.
+					} else if (TempA.id == TempB.id && ret == 3) { // finde the node, but it doesn't have the id.
 						snprintf(writebuf, sizeof(writebuf),
 								"search %s to node 0x%08x, key ABSENT\n", str,
 								TempA.id);
@@ -2186,32 +2281,28 @@ int HandleStage7Search(int sock, char*str) {
 
 			} else if (str_hash > HashID) {
 				// start from successor
-				msgtype = CLSTQ;
 				TempA.id = succ.id;
 				TempA.port = succ.port;
 				flag = 0;
 				while (flag == 0) {
-					if (nStage >= 4) {
-						// find succ
-						if (FindSuccWithFT(sock, str_hash, &TempA) < 0) {
-							printf(
-									"projb client %s: HandleStoreMessage FindSuccWithFT fail!\n",
-									Myname);
-							return -1;
-						}
+					// find succ
+					if (FindSuccWithFT(sock, str_hash, &TempA) < 0) {
+						printf(
+								"projb client %s: HandleStage7Search FindSuccWithFT fail!\n",
+								Myname);
+						return -1;
 					}
 
-					if ((ret = FindClosest(sock, msgtype, str_hash, TempA,
+					if ((ret = processExtStores(sock, str_hash, str, TempA,
 							&TempB)) < 0) { // it's been changed to stores-q/r messages
 						return -1;
 					}
 
-					if (TempA.id == TempB.id && ret == 1) { // find the node and it has id, yeah!
+					if (TempA.id == TempB.id && ret < 3) { // find the node and it has id, yeah!
 					//fire ext-stores to get the data in the nodes.
-						data_stored[j] = processExtStores(sock, TempA.id,
-								TempA.port, str_hash, str);
+						data_stored[j] = ret;
 						break;
-					} else if (TempA.id == TempB.id && ret == 2) { // finde the node, but it doesn't have the id.
+					} else if (TempA.id == TempB.id && ret == 3) { // finde the node, but it doesn't have the id.
 						snprintf(writebuf, sizeof(writebuf),
 								"search %s to node 0x%08x, key ABSENT\n", str,
 								TempA.id);
@@ -2233,7 +2324,7 @@ int HandleStage7Search(int sock, char*str) {
 		}
 	}					//end of for
 
-	if (data_stored[0] == data_stored[1]) {
+	if (data_stored[0] == data_stored[1] && data_stored[0] == 1) {
 		snprintf(writebuf, sizeof(writebuf),
 				"search %s to node 0x%08x and 0x%08x, key PRESENT and VERIFIED\n",
 				str, nearest_nodes[0], nearest_nodes[1]);
@@ -2732,9 +2823,9 @@ int SearchClientStore(unsigned int id, char *str) {
 			}
 		} else {
 			for (i = 0; i < nCStore; i++) {
-				if (id == temp->id)
+				if (id == temp->id) {
 					return 1;
-				else
+				} else
 					temp = temp->next;
 			}
 		}
