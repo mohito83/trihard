@@ -1,0 +1,16 @@
+7.1) Have you implemented all the requirements of this stage? if not, which are missing?
+
+7.2) Did you use any library other than those presented on the moodle page? if so, which one and to do what?
+
+7.3) From a technical point of view, TKCC is attacking Triad by putting up false nodes.One way to judge the ectiveness of this attack is to evaluate how many IDs m false nodes will block. First, without the replication added in stage 7, suppose there are n nodes in Triad, and 1 false node is added. What fraction of the ID space is preempted in this case? Please consider the average case here, not worst case. In the worst case, everything hashes to a single node!
+
+
+7.4) Of course, stage 7 adds replication. With replication (as per stage 7) and 1 false node, what fraction of the ID space is now impeded? Again, please consider the average case here, not worst case.
+
+
+7.5) Do you have one other suggestion about how to prevent Triad from working? (In other words, answer the question: if you were TKCC, what technical step would you take to impede Triad.)
+
+7.6) Do you have one other suggestion about how to make Triad robust to attacks? (In other words, answer the question: if you were the Triad developers, what technical step would you take to protect Triad from your biggest fear of attack. The attack can either be what you mention in 7.5, or other attacks.)
+
+
+

@@ -1,0 +1,12 @@
+6.1) Have you implemented all the requirements of this stage? if not, which are missing?
+Yes, I have implemented all requirements of this stage.
+
+6.2) Did you use any library other than those presented on the moodle page? if so, which one and to do what?
+No, I didn't use any library other than those preseneted on the moodle page.
+
+6.3) How do you detect that a given client is down?
+I have used a 2 second timeout for hello-predecessor-q message. A timeout for hello-predecessor-q message indicates that my successor node is down, and I should start rebuilding/repairing the ring.
+
+6.4) How did you support receiving messages and also handling timeouts to do stabilization, when the replies might happen at the same time?
+
+
